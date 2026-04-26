@@ -68,6 +68,7 @@ iOS personal-AI-OS app. Messy text capture → LLM-structured behavior intellige
 - `SarvisWidget` extension target (bundle ID `com.shrey.sarvis.widget`)
 - Faux text-box pill + "Submit" — taps deep-link via `sarvis://capture` (WidgetKit can't host live `TextField`)
 - Host app handles deep link in `RootView.onOpenURL` → presents `QuickCaptureSheet` (focused TextField → `TodoStore.shared.capture(text:type:.note,...)` → toast)
+- **⚠️ Currently disabled in `project.yml`** (target block + host-app dependency commented out, 2026-04-26) — code still under `SarvisWidget/`. Re-enable by uncommenting the `SarvisWidget` target and its `dependencies:` entry in the `Sarvis` target. Disabled because device code-signing for the extension was failing on the user's iPhone; user will revisit later.
 
 ### Prompts
 - All prompts in `prompts/*.md` with YAML headers (`purpose`, `when_used`, `variables`)
@@ -159,6 +160,8 @@ Plan files + outputs live in `.dispatch/tasks/<task-id>/`. They're committed.
 
 ## Update log
 
+- **2026-04-26** — widget extension temporarily disabled in `project.yml` (device codesign failure on physical iPhone); host app builds + runs without it.
+- **2026-04-26** — duplicate `ShoppingUrgency` enum collision fixed (display-only props moved into an extension on the canonical enum in `ShoppingItemConfig.swift`).
 - **2026-04-26** — processed viewer tab shipped (todos, notes, shopping, diary, ideas, suggestions, quotes, news, profile).
 - **2026-04-26** — wave 2 (raw/processed split, classifier, shopping element, morning/quotes jobs, news fetcher) shipped + pushed to GitHub.
 - **2026-04-26** — STATE.md created.
