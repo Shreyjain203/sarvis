@@ -75,9 +75,12 @@ iOS personal-AI-OS app. Messy text capture → LLM-structured behavior intellige
 - `PromptLibrary.body(for:fallback:)` loads body from bundle, strips YAML header
 - Files: `basic_app`, `capture_cleanup`, `capture_classify`, `daily_update`, `classify_input`, `sensitive_detect`, `news_summary`, `quote_pick`
 
-## Build status — queued / unfinished
+## Build status — shipped
 
-- **`processed-viewer-screen`** — second tab showing each processed type (todos, notes, shopping with urgency, diary, etc.) using the dynamic UI composer. Not yet dispatched.
+### Processed viewer (Library tab)
+- **`processed-viewer-screen`** — third tab ("Library", `tray.full`) with section chip picker: Today, Notes, Shopping, Diary, Ideas, Suggestions, Quotes, News, Profile. Each section reads from the appropriate store and renders with the `TodayView` visual idiom. 6 new display elements (`TodoListRow`, `NotesListRow`, `ShoppingListRow`, `DiaryEntry`, `QuoteCard`, `NewsHeadline`) all registered in `ElementRegistry`.
+
+## Build status — queued / unfinished
 - **Plans daily artifact writer** — LLM job that reads everything else and writes `processed/plans/<date>.json`. Not yet built. (`DailyArtifactStore` exists for storage; the writer doesn't.)
 - **Email subject classification** — Gmail OAuth + `processed/email/`. Roadmapped.
 - **Screen Time integration** — FamilyControls + DeviceActivity. Roadmapped.
@@ -107,7 +110,7 @@ Sarvis/
     Elements/
       Input/             TextInput, CalendarPicker, TypeChip, ImportancePicker, ToggleRow, ShoppingItem
       Display/           SummaryCard, ActionButton
-  Screens/               InputView (legacy capture), CaptureScreenDynamic, TodayView, SettingsView, QuickCaptureSheet
+  Screens/               InputView (legacy capture), CaptureScreenDynamic, TodayView, ProcessedView (Library tab), SettingsView, QuickCaptureSheet
   Resources/
     Prompts/             bundled .md mirror of /prompts
     Quotes/              seed.json
@@ -150,12 +153,13 @@ prompts/                 source-of-truth prompts (sync to Resources/Prompts via 
 | classifier-pipeline | sonnet | 2 | ✅ |
 | shopping-urgency-element | sonnet | 2 | ✅ |
 | morning-and-quotes-jobs | sonnet | 2 | ✅ |
-| processed-viewer-screen | — | queued | ⏳ not yet dispatched |
+| processed-viewer-screen | sonnet | 3 | ✅ |
 
 Plan files + outputs live in `.dispatch/tasks/<task-id>/`. They're committed.
 
 ## Update log
 
+- **2026-04-26** — processed viewer tab shipped (todos, notes, shopping, diary, ideas, suggestions, quotes, news, profile).
 - **2026-04-26** — wave 2 (raw/processed split, classifier, shopping element, morning/quotes jobs, news fetcher) shipped + pushed to GitHub.
 - **2026-04-26** — STATE.md created.
 - **2026-04-25** — rename to Sarvis, dynamic UI composer + widget completed.

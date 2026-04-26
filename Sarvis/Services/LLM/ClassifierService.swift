@@ -76,7 +76,7 @@ final class ClassifierService: ObservableObject {
         let today = iso.string(from: Date())
 
         // Substitute template variables
-        var filledPrompt = systemPrompt
+        let filledPrompt = systemPrompt
             .replacingOccurrences(of: "{{entries}}", with: entriesJSON)
             .replacingOccurrences(of: "{{profile}}", with: profileJSON)
             .replacingOccurrences(of: "{{today}}", with: today)

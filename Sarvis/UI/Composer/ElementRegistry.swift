@@ -59,5 +59,23 @@ final class ElementRegistry {
         register("Display/ActionButton") { spec, state in
             AnyView(ActionButtonView(spec: spec, state: state))
         }
+        register("Display/TodoListRow") { spec, state in
+            AnyView(TodoListRowView(spec: spec, state: state))
+        }
+        register("Display/NotesListRow") { spec, state in
+            AnyView(NotesListRowView(spec: spec, state: state))
+        }
+        register("Display/ShoppingListRow") { spec, state in
+            AnyView(ShoppingListRowView(spec: spec, state: state))
+        }
+        register("Display/DiaryEntry") { spec, state in
+            AnyView(DiaryEntryView(spec: spec, state: state))
+        }
+        register("Display/QuoteCard") { spec, state in
+            AnyView(QuoteCardView(spec: spec, state: state))
+        }
+        register("Display/NewsHeadline") { spec, state in
+            AnyView(NewsHeadlineView(spec: spec, state: state))
+        }
     }
 }

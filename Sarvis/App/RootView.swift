@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct RootView: View {
-    enum Tab: Hashable { case capture, today }
+    enum Tab: Hashable { case capture, today, library }
 
     @State private var tab: Tab = .capture
     @Namespace private var indicatorNS
@@ -14,7 +14,8 @@ struct RootView: View {
             Group {
                 switch tab {
                 case .capture: InputView()
-                case .today: TodayView()
+                case .today:   TodayView()
+                case .library: ProcessedView()
                 }
             }
             .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -44,6 +45,7 @@ private struct CustomTabBar: View {
         HStack(spacing: Theme.Spacing.xs) {
             tabButton(.capture, label: "Capture", icon: "square.and.pencil")
             tabButton(.today, label: "Today", icon: "leaf")
+            tabButton(.library, label: "Library", icon: "tray.full")
         }
         .padding(Theme.Spacing.xs)
         .background {
