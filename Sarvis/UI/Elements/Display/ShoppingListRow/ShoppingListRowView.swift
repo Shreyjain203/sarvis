@@ -24,24 +24,10 @@ struct ShoppingListRowView: View {
     }
 }
 
-// MARK: - Urgency model (mirrors ShoppingItemView's internal enum)
+// MARK: - Display-only extensions on the canonical ShoppingUrgency
+// (Defined in `Sarvis/UI/Elements/Input/ShoppingItem/ShoppingItemConfig.swift`.)
 
-enum ShoppingUrgency: String, CaseIterable {
-    case today       = "today"
-    case nextVisit   = "nextVisit"
-    case thisWeek    = "thisWeek"
-    case someday     = "someday"
-
-    var label: String {
-        switch self {
-        case .today:     return "Today"
-        case .nextVisit: return "Next visit"
-        case .thisWeek:  return "This week"
-        case .someday:   return "Someday"
-        }
-    }
-
-    /// Color-coded by urgency: warm → neutral → cool → muted
+extension ShoppingUrgency {
     var chipColor: Color {
         switch self {
         case .today:     return Color.orange.opacity(0.82)
@@ -60,7 +46,7 @@ enum ShoppingUrgency: String, CaseIterable {
         }
     }
 
-    /// Infer urgency from item text (heuristic, MVP only).
+    /// Infer urgency from item text (heuristic, MVP only — see file header).
     static func infer(from text: String) -> ShoppingUrgency {
         let lower = text.lowercased()
         if lower.contains("today") || lower.contains("urgent") || lower.contains("asap") {
@@ -72,7 +58,6 @@ enum ShoppingUrgency: String, CaseIterable {
         } else if lower.contains("someday") || lower.contains("eventually") {
             return .someday
         }
-        // Default: nextVisit (most common real-world case)
         return .nextVisit
     }
 }

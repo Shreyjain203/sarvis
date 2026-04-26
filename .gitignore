@@ -43,6 +43,7 @@ fastlane/test_output
 *.pem
 *.key
 secrets/
+project.local.yml
 
 # Logs
 *.log
