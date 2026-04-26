@@ -1,0 +1,52 @@
+# Xcode user/state
+*.xcuserstate
+xcuserdata/
+DerivedData/
+build/
+*.dSYM.zip
+*.dSYM
+
+# XcodeGen output (regenerate via setup.sh / xcodegen)
+Sarvis.xcodeproj/
+ReminderApp.xcodeproj/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Swift Package Manager
+.build/
+Packages/
+.swiftpm/
+Package.resolved
+
+# CocoaPods / Carthage (unused)
+Pods/
+Carthage/Build/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Local-only / secrets
+.env
+.env.local
+*.local
+*.pem
+*.key
+secrets/
+
+# Logs
+*.log
+
+# Dispatch worker IPC scratch (keep plans + outputs, drop transient files)
+.dispatch/tasks/*/ipc/
+.dispatch/tasks/*/context.md

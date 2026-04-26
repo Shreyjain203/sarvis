@@ -1,0 +1,551 @@
+import SwiftUI
+
+struct InputView: View {
+    @EnvironmentObject var store: TodoStore
+    @StateObject private var llm = LLMService()
+    @ObservedObject private var classifier = ClassifierService.shared
+
+    @State private var text = ""
+    @State private var importance: Importance = .medium
+    @State private var inputType: InputType = .task
+    @State private var isSensitive = false
+    @State private var enableNotification = false
+    @State private var dueAt: Date = Date()
+    @State private var showSettings = false
+    @State private var llmDraft = ""
+    @State private var saveError: String?
+
+    @Namespace private var importanceNS
+    @Namespace private var inputTypeNS
+    @FocusState private var editorFocused: Bool
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.LayeredBackground()
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                        header
+                        editorCard
+                        importanceRow
+                        inputTypeRow
+                        sensitiveAndDate
+                        aiAssistCard
+                        processNowButton
+                        saveButton
+                        statusFooter
+                        // Bottom space for the floating tab bar
+                        Color.clear.frame(height: 96)
+                    }
+                    .padding(.horizontal, Theme.Spacing.lg)
+                    .padding(.top, Theme.Spacing.md)
+                }
+                .dismissKeyboardToolbar()
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Haptics.light()
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundStyle(Theme.Palette.muted)
+                    }
+                }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView().onDisappear { llm.reload() }
+            }
+        }
+    }
+
+    // MARK: Header
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Capture")
+                .font(Theme.Typography.title())
+                .foregroundStyle(Theme.Palette.ink)
+            Text("A quiet place for the things you don't want to forget.")
+                .font(Theme.Typography.meta())
+                .foregroundStyle(Theme.Palette.muted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Hero text editor
+    private var editorCard: some View {
+        ZStack(alignment: .topLeading) {
+            if text.isEmpty {
+                Text("What's on your mind?")
+                    .font(.system(.title3, design: .serif))
+                    .foregroundStyle(Theme.Palette.muted.opacity(0.7))
+                    .padding(.top, 8)
+                    .padding(.leading, 6)
+                    .allowsHitTesting(false)
+            }
+            TextEditor(text: $text)
+                .font(.system(.title3, design: .serif))
+                .scrollContentBackground(.hidden)
+                .focused($editorFocused)
+                .frame(minHeight: 140, maxHeight: 240)
+                .tint(Theme.Palette.ink)
+        }
+        .themedCard(padding: Theme.Spacing.md, cornerRadius: Theme.Radius.hero)
+    }
+
+    // MARK: Importance chips
+    private var importanceRow: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            label("Importance")
+            HStack(spacing: Theme.Spacing.xs) {
+                ForEach(Importance.allCases) { imp in
+                    ImportanceChip(
+                        importance: imp,
+                        isSelected: importance == imp,
+                        ns: importanceNS
+                    ) {
+                        Haptics.soft()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            importance = imp
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: InputType chips
+    private var inputTypeRow: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            label("Type")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.xs) {
+                    ForEach(InputType.allCases) { type in
+                        InputTypeChip(
+                            inputType: type,
+                            isSelected: inputType == type,
+                            ns: inputTypeNS
+                        ) {
+                            Haptics.soft()
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                inputType = type
+                                // Auto-sync sensitive toggle when user picks the sensitive type.
+                                if type == .sensitive { isSensitive = true }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Sensitive + date
+    private var sensitiveAndDate: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(spacing: Theme.Spacing.sm) {
+                LockPill(isOn: $isSensitive)
+                Spacer()
+                NotificationPill(isOn: $enableNotification)
+            }
+
+            if enableNotification {
+                HStack {
+                    Image(systemName: "bell")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.Palette.muted)
+                    Text("Remind me")
+                        .font(Theme.Typography.body())
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                    Spacer()
+                    DatePicker("", selection: $dueAt, in: Date()...)
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
+                }
+                .themedCard(padding: Theme.Spacing.sm + 4,
+                            cornerRadius: Theme.Radius.card)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: enableNotification)
+    }
+
+    // MARK: AI assist
+    private var aiAssistCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Button {
+                Task { await runLLM() }
+            } label: {
+                HStack(spacing: Theme.Spacing.xs) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 14, weight: .medium))
+                        .modifier(ShimmerEffect(active: llm.isSending))
+                    Text(llm.isSending ? "Thinking" : "Clean up with Claude")
+                        .font(Theme.Typography.bodyEmphasis())
+                    Spacer()
+                    if llm.isSending {
+                        ProgressView().controlSize(.small)
+                    }
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, Theme.Spacing.md)
+                .background {
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                        .strokeBorder(Theme.Palette.hairline, lineWidth: 0.5)
+                )
+                .foregroundStyle(text.isEmpty ? Theme.Palette.muted : Theme.Palette.ink)
+            }
+            .buttonStyle(.plain)
+            .disabled(text.isEmpty || llm.isSending)
+
+            if !llmDraft.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text("Claude suggests")
+                        .font(Theme.Typography.meta())
+                        .foregroundStyle(Theme.Palette.muted)
+                        .textCase(.uppercase)
+                        .tracking(0.5)
+                    Text(llmDraft)
+                        .font(.system(.callout, design: .serif))
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                    Button {
+                        Haptics.soft()
+                        text = llmDraft
+                        llmDraft = ""
+                    } label: {
+                        Text("Use this version")
+                            .font(Theme.Typography.meta())
+                            .foregroundStyle(Theme.Palette.ink)
+                            .underline()
+                    }
+                    .buttonStyle(.plain)
+                }
+                .themedCard(padding: Theme.Spacing.md,
+                            cornerRadius: Theme.Radius.card)
+            }
+
+            if let err = llm.lastError {
+                Text(err)
+                    .font(Theme.Typography.meta())
+                    .foregroundStyle(.red.opacity(0.85))
+            }
+        }
+    }
+
+    // MARK: Process now button
+    private var processNowButton: some View {
+        Button {
+            Task { await runClassifier() }
+        } label: {
+            HStack(spacing: Theme.Spacing.xs) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 14, weight: .medium))
+                Text(classifier.isRunning ? "Processing…" : "Process now")
+                    .font(Theme.Typography.bodyEmphasis())
+                Spacer()
+                if classifier.isRunning {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, Theme.Spacing.md)
+            .background {
+                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                    .strokeBorder(Theme.Palette.hairline, lineWidth: 0.5)
+            }
+            .foregroundStyle(classifier.isRunning ? Theme.Palette.muted : Theme.Palette.ink)
+        }
+        .buttonStyle(.plain)
+        .disabled(classifier.isRunning)
+    }
+
+    // MARK: Save button
+    private var saveButton: some View {
+        Button {
+            Task { await save() }
+        } label: {
+            Text("Save")
+                .font(Theme.Typography.bodyEmphasis())
+                .foregroundStyle(Color(uiColor: .systemBackground))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background {
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                        .fill(Theme.Palette.ink)
+                }
+                .opacity(text.trimmingCharacters(in: .whitespaces).isEmpty ? 0.35 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+    }
+
+    private var statusFooter: some View {
+        VStack(spacing: 4) {
+            if let err = saveError {
+                Text(err)
+                    .font(Theme.Typography.meta())
+                    .foregroundStyle(.red.opacity(0.85))
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func label(_ s: String) -> some View {
+        Text(s.uppercased())
+            .font(Theme.Typography.meta())
+            .tracking(1)
+            .foregroundStyle(Theme.Palette.muted)
+    }
+
+    // MARK: Logic (unchanged)
+    private func runClassifier() async {
+        guard !classifier.isRunning else { return }
+        do {
+            let report = try await ClassifierService.shared.classifyUnprocessed()
+            ToastCenter.shared.show("Processed \(report.itemsAdded) item\(report.itemsAdded == 1 ? "" : "s")")
+        } catch {
+            ToastCenter.shared.show("Process failed")
+        }
+    }
+
+    private func runLLM() async {
+        let result = await llm.ask(
+            systemPrompt: PromptLibrary.body(for: "capture_cleanup", fallback: "Rewrite the user's note as one short, clear todo line. Keep their intent. No preamble."),
+            prompt: text
+        )
+        if let result { llmDraft = result.trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+
+    private func save() async {
+        let dueDate: Date? = enableNotification ? dueAt : nil
+        var notificationID: String?
+
+        if enableNotification {
+            // Build a temporary item to schedule the notification.
+            let temp = TodoItem(
+                text: text.trimmingCharacters(in: .whitespacesAndNewlines),
+                importance: importance,
+                isSensitive: isSensitive,
+                type: inputType,
+                dueAt: dueDate
+            )
+            do {
+                notificationID = try await NotificationService.shared.schedule(temp, at: dueAt)
+            } catch {
+                saveError = "Couldn't schedule notification: \(error.localizedDescription)"
+                return
+            }
+        }
+
+        // Run through middleware and persist.
+        var saved = store.capture(
+            text: text.trimmingCharacters(in: .whitespacesAndNewlines),
+            type: inputType,
+            importance: importance,
+            isSensitive: isSensitive,
+            dueAt: dueDate
+        )
+
+        // Patch in the notification ID if one was scheduled.
+        if let nid = notificationID {
+            saved.notificationID = nid
+            store.update(saved)
+        }
+
+        Haptics.success()
+        ToastCenter.shared.show("Saved")
+
+        text = ""
+        llmDraft = ""
+        importance = .medium
+        inputType = .task
+        isSensitive = false
+        enableNotification = false
+        dueAt = Date()
+        saveError = nil
+    }
+}
+
+// MARK: - Importance chip
+private struct ImportanceChip: View {
+    let importance: Importance
+    let isSelected: Bool
+    var ns: Namespace.ID
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: importance.symbol)
+                    .font(.system(size: 11, weight: .medium))
+                Text(importance.label)
+                    .font(Theme.Typography.chip())
+            }
+            .foregroundStyle(isSelected ? Color(uiColor: .systemBackground) : Theme.Palette.inkSoft)
+            .padding(.horizontal, Theme.Spacing.sm + 2)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                        .fill(Theme.Palette.ink)
+                        .matchedGeometryEffect(id: "importanceIndicator", in: ns)
+                } else {
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                        .strokeBorder(Theme.Palette.hairline, lineWidth: 0.5)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.chip))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - InputType chip
+private struct InputTypeChip: View {
+    let inputType: InputType
+    let isSelected: Bool
+    var ns: Namespace.ID
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: inputType.symbol)
+                    .font(.system(size: 11, weight: .medium))
+                Text(inputType.label)
+                    .font(Theme.Typography.chip())
+            }
+            .foregroundStyle(isSelected ? Color(uiColor: .systemBackground) : Theme.Palette.inkSoft)
+            .padding(.horizontal, Theme.Spacing.sm + 2)
+            .padding(.vertical, 8)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                        .fill(Theme.Palette.ink)
+                        .matchedGeometryEffect(id: "inputTypeIndicator", in: ns)
+                } else {
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                        .strokeBorder(Theme.Palette.hairline, lineWidth: 0.5)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.chip))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Lock pill
+private struct LockPill: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button {
+            Haptics.soft()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                isOn.toggle()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isOn ? "lock.fill" : "lock.open")
+                    .font(.system(size: 12, weight: .medium))
+                Text(isOn ? "Sensitive" : "Private?")
+                    .font(Theme.Typography.chip())
+            }
+            .foregroundStyle(isOn ? Color.red.opacity(0.9) : Theme.Palette.muted)
+            .padding(.horizontal, Theme.Spacing.sm + 2)
+            .padding(.vertical, 8)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(isOn ? Theme.Palette.sensitiveTint : Color.clear)
+                Capsule(style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .opacity(isOn ? 0 : 1)
+            }
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(isOn ? Color.red.opacity(0.3) : Theme.Palette.hairline,
+                                  lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Notification pill
+private struct NotificationPill: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button {
+            Haptics.soft()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                isOn.toggle()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isOn ? "bell.fill" : "bell.slash")
+                    .font(.system(size: 12, weight: .medium))
+                Text(isOn ? "Remind" : "No reminder")
+                    .font(Theme.Typography.chip())
+            }
+            .foregroundStyle(isOn ? Theme.Palette.ink : Theme.Palette.muted)
+            .padding(.horizontal, Theme.Spacing.sm + 2)
+            .padding(.vertical, 8)
+            .background {
+                Capsule(style: .continuous).fill(.ultraThinMaterial)
+            }
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Theme.Palette.hairline, lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Shimmer for sparkles button
+private struct ShimmerEffect: ViewModifier {
+    let active: Bool
+    @State private var phase: CGFloat = -1
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if active {
+                    LinearGradient(
+                        colors: [.clear, Color.white.opacity(0.6), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: 30)
+                    .offset(x: phase * 60)
+                    .mask(content)
+                    .onAppear {
+                        withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                            phase = 1
+                        }
+                    }
+                }
+            }
+            .onChange(of: active) { _, isActive in
+                if !isActive { phase = -1 }
+            }
+    }
+}
+
+#Preview {
+    InputView().environmentObject(TodoStore.shared)
+}
