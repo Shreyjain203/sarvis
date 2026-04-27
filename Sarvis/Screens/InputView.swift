@@ -231,10 +231,26 @@ struct InputView: View {
         guard !classifier.isRunning else { return }
         do {
             let report = try await ClassifierService.shared.classifyUnprocessed()
-            ToastCenter.shared.show("Processed \(report.itemsAdded) item\(report.itemsAdded == 1 ? "" : "s")")
+            if report.itemsAdded == 0 {
+                // Happy path with zero items can mean "nothing to do" OR a
+                // silent LLM/parse hiccup that resolved to an empty `items`
+                // array. Surface the underlying error if there is one.
+                if let llmErr = ClassifierService.shared.lastLLMError, !llmErr.isEmpty {
+                    ToastCenter.shared.show(Self.truncated(llmErr))
+                } else {
+                    ToastCenter.shared.show("Nothing to process")
+                }
+            } else {
+                ToastCenter.shared.show("Processed \(report.itemsAdded) item\(report.itemsAdded == 1 ? "" : "s")")
+            }
         } catch {
-            ToastCenter.shared.show("Process failed")
+            ToastCenter.shared.show(Self.truncated(error.localizedDescription))
         }
+    }
+
+    private static func truncated(_ s: String, max: Int = 140) -> String {
+        if s.count <= max { return s }
+        return String(s.prefix(max - 1)) + "…"
     }
 
     private func save() async {
@@ -258,8 +274,10 @@ struct InputView: View {
             }
         }
 
-        // Run through middleware and persist.
-        var saved = store.capture(
+        // Persist as a raw entry. The returned in-memory TodoItem shares the
+        // raw's id; nothing is written to processed/<type>.json until the
+        // classifier runs.
+        let saved = store.capture(
             text: text.trimmingCharacters(in: .whitespacesAndNewlines),
             type: inputType,
             importance: importance,
@@ -267,10 +285,13 @@ struct InputView: View {
             dueAt: dueDate
         )
 
-        // Patch in the notification ID if one was scheduled.
+        // If a notification was scheduled, store its id on the raw so:
+        //  1) swipe-delete on Entries can cancel it,
+        //  2) the classifier can carry it onto the materialised TodoItem.
         if let nid = notificationID {
-            saved.notificationID = nid
-            store.update(saved)
+            await MainActor.run {
+                RawStore.shared.setNotificationID(for: saved.id, nid)
+            }
         }
 
         Haptics.success()

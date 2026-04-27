@@ -40,7 +40,14 @@ final class LLMService: ObservableObject {
     }
 
     func ask(systemPrompt: String, prompt: String) async -> String? {
-        var localOptions = options
+        await ask(systemPrompt: systemPrompt, prompt: prompt, options: nil)
+    }
+
+    /// One-shot ask that lets the caller override token/temperature/model
+    /// without mutating the shared `options`. Used by the classifier to bump
+    /// `maxTokens` for batch JSON responses without affecting chat defaults.
+    func ask(systemPrompt: String, prompt: String, options overrides: LLMOptions?) async -> String? {
+        var localOptions = overrides ?? options
         localOptions.systemPrompt = systemPrompt
         let one = [LLMMessage(role: .user, content: prompt)]
         isSending = true

@@ -30,7 +30,8 @@ iOS personal-AI-OS app. Messy text capture → LLM-structured behavior intellige
 - `Documents/processed/plans/<YYYY-MM-DD>.json` — daily planning artifact (writer not yet built)
 - `Documents/processed/news/<YYYY-MM-DD>.json` — daily news summary artifact
 - `Documents/cache/news/<YYYY-MM-DD>.json` — raw GNews fetch
-- Dual-write transitional behavior: `TodoStore.capture(...)` writes BOTH raw and the matching processed file so existing screens keep working. Classifier reconciles on demand.
+- **Capture is raw-only.** `TodoStore.capture(...)` writes a single `RawEntry` to `Documents/raw/<uuid>.json` and returns a synthesized in-memory `TodoItem` (NOT persisted to any processed bucket). The Entries tab reads `RawStore.shared.entries.filter { !$0.processed }`. Items only land in `processed/<type>.json` after the user taps Process — `ClassifierService.classifyUnprocessed()` calls Anthropic, materialises a `TodoItem` per raw, and flips `processed = true` on each raw it successfully wrote. If the user picked a type at capture time (`suggestedType != nil`) that wins; otherwise the LLM's `type` is used. The LLM's cleaned `text`, `importance`, `dueAt`, and `isSensitive` always apply. Notification IDs are stored on the raw and carried forward.
+- **One-time data caveat:** users who captured before the dual-write was removed (≤ 2026-04-26) may have entries that already exist in `processed/<type>.json` AND a corresponding `raw/<uuid>.json` with `processed = false`. Tapping Process on those raws will produce a duplicate in the matching Library tab; manually delete dupes if it bothers you. We do not auto-mark legacy raws processed at startup because we cannot reliably correlate them.
 - Migration: legacy `Documents/<type>.json` files auto-move into `processed/` on first init.
 
 ### Input types (`InputType` enum)
@@ -48,9 +49,9 @@ iOS personal-AI-OS app. Messy text capture → LLM-structured behavior intellige
 
 ### Classifier pipeline
 - `prompts/capture_classify.md` — JSON-only output, batch-classify N raw entries against `{{profile}}` and `{{today}}`
-- `ClassifierService.shared.classifyUnprocessed()` — reads unprocessed raws, calls LLM, distributes to processed files, schedules notifications, merges profile deltas
-- "Process with LLM" button on both `InputView` and `CaptureScreenDynamic`
-- Reconciliation rule: if user picked a type at capture (`suggestedType != nil`), that wins — just mark the raw processed. Otherwise the LLM's type/text replaces the dual-written preview.
+- `ClassifierService.shared.classifyUnprocessed()` — reads unprocessed raws, calls LLM with `maxTokens = max(default, 4096)`, parses by slicing between first `{` and last `}` (survives preamble/postamble), materialises a `TodoItem` per raw via `TodoStore.shared.add(...)`, marks each raw processed only after a successful write, schedules notifications, merges profile deltas.
+- "Process with LLM" button on both `InputView` and `CaptureScreenDynamic`. The InputView toolbar surfaces the actual error string in the toast (truncated to ~140 chars) on any throw — no more silent "Process failed".
+- Reconciliation rule: if user picked a type at capture (`suggestedType != nil`), that wins. Otherwise the LLM's `type` is used. The LLM's cleaned `text`, `importance`, `dueAt`, and `isSensitive` always apply. The raw's `notificationID` is carried forward onto the resulting `TodoItem`.
 
 ### Background jobs
 - `MorningJob` (`com.shrey.sarvis.morning`) — `BGAppRefreshTask` registered in `SarvisApp.init()`, scheduled for next 7 AM. Handler: `NewsService.refreshToday()` → LLM summarizes via `prompts/news_summary.md` → stored at `processed/news/<date>.json` → notification "Today's briefing" with summary baked in.
@@ -124,9 +125,10 @@ prompts/                 source-of-truth prompts (sync to Resources/Prompts via 
 
 | Symbol | What it does |
 |---|---|
-| `TodoStore.shared.capture(text:type:importance:isSensitive:dueAt:)` | Capture entry point. Writes RawEntry + dual-writes processed item. |
+| `TodoStore.shared.capture(text:type:importance:isSensitive:dueAt:)` | Capture entry point. Writes a `RawEntry` only (no processed write). Returns an in-memory `TodoItem` whose `id` matches the raw's id, for caller-side notification scheduling. |
 | `RawStore.shared.unprocessed()` | Returns all raw entries with `processed == false`. |
 | `RawStore.shared.markProcessed(_:)` | Flag a raw entry as classified. |
+| `RawStore.shared.setNotificationID(for:_:)` | Write a scheduled notification's id back onto a raw entry. |
 | `ClassifierService.shared.classifyUnprocessed()` | Run the LLM classifier, distribute outputs. |
 | `ProfileStore.shared.merge(_ partial:)` | Apply LLM profile deltas. |
 | `NewsService.shared.refreshToday()` | Fetch + cache today's GNews articles. |
@@ -175,6 +177,7 @@ House conventions — every worker and instance must follow these.
 
 ## Update log
 
+- **2026-04-26** — process-now-fix: capture is now raw-only (dual-write removed); Entries tab reads unprocessed raws via `RawStore` and renders them with a new `RawEntryRow`; `ClassifierService` always materialises a `TodoItem` per classified raw, respects user-picked `suggestedType`, carries `notificationID` forward, bumps `maxTokens` to 4096, and parses by slicing between first `{` and last `}`. `RawEntry` gains an optional `notificationID`; `RawStore.setNotificationID(for:_:)` lets `InputView.save()` write it back. Toast on Process now shows the real error string.
 - **2026-04-26** — ui-updates-wave-2: Entries tab rebuilt (all items, date-partitioned timeline, descending); tab label "Today" → "Entries" (`tray` icon); Library `today` section removed (default now `notes`); UI rules section added to STATE.md.
 - **2026-04-26** — widget extension temporarily disabled in `project.yml` (device codesign failure on physical iPhone); host app builds + runs without it.
 - **2026-04-26** — duplicate `ShoppingUrgency` enum collision fixed (display-only props moved into an extension on the canonical enum in `ShoppingItemConfig.swift`).

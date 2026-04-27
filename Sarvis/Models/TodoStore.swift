@@ -82,19 +82,17 @@ final class TodoStore: ObservableObject {
 
     // MARK: - Widget / public capture API
 
-    /// Runs `InputProcessor.process(_:)`, persists, and returns the saved item.
-    /// This is the stable API surface the widget extension will call:
+    /// Persists a raw capture to `Documents/raw/<uuid>.json` and returns a
+    /// synthesized in-memory `TodoItem` for the caller's local use (e.g. to
+    /// schedule a notification immediately). The returned item is NOT written
+    /// to any `processed/<type>.json` bucket — that's the classifier's job.
+    ///
+    /// Stable API surface:
     ///   `TodoStore.shared.capture(text:type:importance:isSensitive:dueAt:)`
     ///
-    /// TRANSITIONAL DUAL-WRITE (storage-layout-v2):
-    /// Each capture is written to BOTH `raw/` (via `RawStore`) AND the existing
-    /// `processed/<type>.json` file (via `add(_:)` below) so that existing screens
-    /// (`TodayView`, `InputView`) continue to work without modification.
-    ///
-    /// TODO: classifier-pipeline — once the classifier worker is live, flip this so
-    /// capture writes raw-only (`RawStore.shared.add(entry)`) and the classifier
-    /// distributes processed items into `processed/<type>.json`. Remove the `add(processed.item)`
-    /// call below and delete this comment block at that point.
+    /// Callers that previously relied on the saved item appearing in
+    /// `TodoStore.items` immediately must now click "Process" (which runs the
+    /// classifier) before items materialise into the processed buckets.
     @discardableResult
     func capture(
         text: String,
@@ -103,9 +101,10 @@ final class TodoStore: ObservableObject {
         isSensitive: Bool = false,
         dueAt: Date? = nil
     ) -> TodoItem {
-        // Build and persist the raw entry.
+        // Build and persist the raw entry — single source of truth for new captures.
+        let rawID = UUID()
         let entry = RawEntry(
-            id: UUID(),
+            id: rawID,
             text: text,
             importance: importance,
             isSensitive: isSensitive,
@@ -113,21 +112,26 @@ final class TodoStore: ObservableObject {
             dueAt: dueAt,
             capturedAt: Date(),
             processed: false,
-            processedAt: nil
+            processedAt: nil,
+            notificationID: nil
         )
         Task { @MainActor in RawStore.shared.add(entry) }
 
-        // Also run through middleware and write to processed/ (dual-write shim).
-        let raw = RawInput(
+        // Synthesize an in-memory TodoItem for the caller. NOT persisted to
+        // TodoStore — the classifier will materialise the canonical item.
+        // The id matches the raw entry id so the caller can correlate them
+        // (e.g. to write a notificationID back onto the raw via RawStore).
+        return TodoItem(
+            id: rawID,
             text: text,
             importance: importance,
             isSensitive: isSensitive,
             type: type,
-            dueAt: dueAt
+            createdAt: entry.capturedAt,
+            dueAt: dueAt,
+            isDone: false,
+            notificationID: nil
         )
-        let processed = InputProcessor.process(raw)
-        add(processed.item)
-        return processed.item
     }
 
     // MARK: - Private persistence helpers

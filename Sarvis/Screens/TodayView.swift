@@ -1,20 +1,25 @@
 import SwiftUI
 
 struct TodayView: View {
-    @EnvironmentObject var store: TodoStore
+    @ObservedObject private var rawStore: RawStore = .shared
 
-    // Group items by start-of-day of createdAt, sorted descending
-    private var groupedItems: [(dayKey: Date, items: [TodoItem])] {
-        let sorted = store.items.sorted { $0.createdAt > $1.createdAt }
+    /// Source list = unprocessed raw entries, newest first, grouped by start-of-day
+    /// of `capturedAt`. The classifier is the only path off this list — once it
+    /// flips `processed = true`, the entry disappears here and surfaces in the
+    /// matching Library tab.
+    private var groupedEntries: [(dayKey: Date, entries: [RawEntry])] {
+        let unprocessed = rawStore.entries
+            .filter { !$0.processed }
+            .sorted { $0.capturedAt > $1.capturedAt }
         let cal = Calendar.current
-        var dict: [Date: [TodoItem]] = [:]
-        for item in sorted {
-            let key = cal.startOfDay(for: item.createdAt)
-            dict[key, default: []].append(item)
+        var dict: [Date: [RawEntry]] = [:]
+        for entry in unprocessed {
+            let key = cal.startOfDay(for: entry.capturedAt)
+            dict[key, default: []].append(entry)
         }
         return dict
             .sorted { $0.key > $1.key }
-            .map { (dayKey: $0.key, items: $0.value) }
+            .map { (dayKey: $0.key, entries: $0.value) }
     }
 
     var body: some View {
@@ -25,11 +30,11 @@ struct TodayView: View {
                     VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                         header
 
-                        if store.items.isEmpty {
+                        if groupedEntries.isEmpty {
                             emptyState
                         } else {
-                            ForEach(groupedItems, id: \.dayKey) { group in
-                                daySection(dayKey: group.dayKey, items: group.items)
+                            ForEach(groupedEntries, id: \.dayKey) { group in
+                                daySection(dayKey: group.dayKey, entries: group.entries)
                             }
                         }
 
@@ -51,7 +56,7 @@ struct TodayView: View {
             Text("Entries")
                 .font(Theme.Typography.title())
                 .foregroundStyle(Theme.Palette.ink)
-            Text("Everything you've captured.")
+            Text("Captures waiting to be processed.")
                 .font(Theme.Typography.meta())
                 .foregroundStyle(Theme.Palette.muted)
         }
@@ -62,10 +67,10 @@ struct TodayView: View {
     private var emptyState: some View {
         VStack(spacing: Theme.Spacing.xs) {
             Spacer(minLength: Theme.Spacing.xxl)
-            Text("Nothing captured yet")
+            Text("Nothing waiting to be processed.")
                 .font(Theme.Typography.emptyState())
                 .foregroundStyle(Theme.Palette.inkSoft)
-            Text("Capture something on the other tab — or simply rest.")
+            Text("Capture something on the other tab — or tap Process to classify what's here.")
                 .font(Theme.Typography.meta())
                 .foregroundStyle(Theme.Palette.muted)
                 .multilineTextAlignment(.center)
@@ -77,14 +82,14 @@ struct TodayView: View {
 
     // MARK: Day section
     @ViewBuilder
-    private func daySection(dayKey: Date, items: [TodoItem]) -> some View {
+    private func daySection(dayKey: Date, entries: [RawEntry]) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text(Self.sectionTitle(for: dayKey))
                 .font(Theme.Typography.sectionTitle())
                 .foregroundStyle(Theme.Palette.inkSoft)
 
             VStack(spacing: Theme.Spacing.sm) {
-                ForEach(items) { TodoRow(item: $0) }
+                ForEach(entries) { RawEntryRow(entry: $0) }
             }
         }
     }
@@ -112,62 +117,37 @@ struct TodayView: View {
     }
 }
 
-// MARK: - TodoRow (floating card)
-struct TodoRow: View {
-    let item: TodoItem
-    @EnvironmentObject var store: TodoStore
-    @State private var pressed: Bool = false
+// MARK: - RawEntryRow (floating card for a not-yet-processed capture)
+struct RawEntryRow: View {
+    let entry: RawEntry
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Spacing.sm + 2) {
-            Button {
-                Haptics.soft()
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                    store.toggleDone(item.id)
-                }
-            } label: {
-                ZStack {
-                    Circle()
-                        .strokeBorder(item.isDone ? Color.clear : Theme.Palette.muted.opacity(0.55),
-                                      lineWidth: 1.2)
-                        .frame(width: 22, height: 22)
-                    if item.isDone {
-                        Circle()
-                            .fill(Theme.Palette.ink)
-                            .frame(width: 22, height: 22)
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color(uiColor: .systemBackground))
-                    }
-                }
+            // No checkbox — raws aren't TodoItems yet.
+            Image(systemName: "circle.dotted")
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(Theme.Palette.muted.opacity(0.55))
+                .frame(width: 22, height: 22)
                 .padding(.top, 2)
-            }
-            .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(item.text)
+                Text(entry.text)
                     .font(.system(.body, design: .serif))
-                    .foregroundStyle(item.isDone ? Theme.Palette.ink.opacity(0.4) : Theme.Palette.ink)
-                    .strikethrough(item.isDone, color: Theme.Palette.ink.opacity(0.4))
+                    .foregroundStyle(Theme.Palette.ink)
                     .fixedSize(horizontal: false, vertical: true)
 
                 metaRow
             }
 
             Spacer(minLength: 0)
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Theme.Palette.muted.opacity(0.5))
-                .padding(.top, 4)
         }
         .themedCard(padding: Theme.Spacing.md, cornerRadius: Theme.Radius.card)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
-                if let nid = item.notificationID {
+                if let nid = entry.notificationID {
                     NotificationService.shared.cancel(nid)
                 }
-                store.delete(item.id)
+                RawStore.shared.delete(entry.id)
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -178,13 +158,22 @@ struct TodoRow: View {
         HStack(spacing: 10) {
             HStack(spacing: 5) {
                 Circle()
-                    .fill(Theme.Palette.dot(for: item.importance))
+                    .fill(Theme.Palette.dot(for: entry.importance))
                     .frame(width: 5, height: 5)
-                Text(item.importance.label)
+                Text(entry.importance.label)
             }
             .foregroundStyle(Theme.Palette.muted)
 
-            if item.isSensitive {
+            if let suggested = entry.suggestedType {
+                HStack(spacing: 4) {
+                    Image(systemName: suggested.symbol)
+                        .font(.system(size: 9))
+                    Text(suggested.label)
+                }
+                .foregroundStyle(Theme.Palette.muted)
+            }
+
+            if entry.isSensitive {
                 HStack(spacing: 4) {
                     Image(systemName: "lock.fill")
                         .font(.system(size: 9))
@@ -193,19 +182,13 @@ struct TodoRow: View {
                 .foregroundStyle(Theme.Palette.sensitiveAccent)
             }
 
-            if let due = item.dueAt {
-                HStack(spacing: 4) {
-                    Image(systemName: "bell")
-                        .font(.system(size: 9))
-                    Text(due.formatted(date: .omitted, time: .shortened))
-                }
+            Text(entry.capturedAt.formatted(date: .omitted, time: .shortened))
                 .foregroundStyle(Theme.Palette.muted)
-            }
         }
         .font(Theme.Typography.meta())
     }
 }
 
 #Preview {
-    TodayView().environmentObject(TodoStore.shared)
+    TodayView()
 }

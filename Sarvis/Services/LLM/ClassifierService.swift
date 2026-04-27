@@ -49,6 +49,11 @@ final class ClassifierService: ObservableObject {
 
     private init() {}
 
+    /// The last error string surfaced by the underlying `LLMService`, if any.
+    /// Useful for the UI to show the real cause when a run completes with
+    /// zero items added.
+    var lastLLMError: String? { llm.lastError }
+
     /// Reads all unprocessed raw entries, sends them to the LLM classifier,
     /// distributes outputs into the appropriate processed buckets, and returns
     /// a summary report. Throws on LLM or JSON-parsing failures; raws are
@@ -83,8 +88,15 @@ final class ClassifierService: ObservableObject {
 
         let userMessage = "Entries:\n\(entriesJSON)\n\nProfile:\n\(profileJSON)\n\nToday: \(today)"
 
-        // Call LLM
-        guard let rawResponse = await llm.ask(systemPrompt: filledPrompt, prompt: userMessage) else {
+        // Call LLM with a higher token budget than the chat default — batch
+        // classification can produce large JSON, and 1024 truncates it.
+        var classifierOptions = llm.options
+        classifierOptions.maxTokens = max(classifierOptions.maxTokens, 4096)
+        guard let rawResponse = await llm.ask(
+            systemPrompt: filledPrompt,
+            prompt: userMessage,
+            options: classifierOptions
+        ) else {
             throw ClassifierError.llmFailed(llm.lastError ?? "No response from LLM")
         }
 
@@ -104,35 +116,36 @@ final class ClassifierService: ObservableObject {
         for classifiedItem in response.items {
             guard let entry = entryByID[classifiedItem.rawId] else { continue }
 
-            if entry.suggestedType != nil {
-                // User already picked a type at capture time — dual-write already handled it.
-                // Just mark raw processed; trust the user's pick.
-                RawStore.shared.markProcessed(entry.id)
-                rawsMarked += 1
+            // Type resolution: respect the user's pick at capture time. The
+            // LLM's cleaned text / importance / dueAt / isSensitive still
+            // apply.
+            let resolvedType: InputType
+            if let userPick = entry.suggestedType {
+                resolvedType = userPick
             } else {
-                // No user pick — LLM classified it. Write to processed bucket.
-                let type = InputType(rawValue: classifiedItem.type) ?? .other
-                let importance = importanceFromString(classifiedItem.importance)
-                let dueDate = classifiedItem.dueAt.flatMap { iso.date(from: $0) }
-
-                let item = TodoItem(
-                    id: UUID(),
-                    text: classifiedItem.text,
-                    importance: importance,
-                    isSensitive: classifiedItem.isSensitive || type == .sensitive,
-                    type: type,
-                    createdAt: entry.capturedAt,
-                    dueAt: dueDate,
-                    isDone: false,
-                    notificationID: nil
-                )
-                TodoStore.shared.add(item)
-                itemsAdded += 1
-
-                // Mark raw processed only after successful write
-                RawStore.shared.markProcessed(entry.id)
-                rawsMarked += 1
+                resolvedType = InputType(rawValue: classifiedItem.type) ?? .other
             }
+
+            let importance = importanceFromString(classifiedItem.importance)
+            let dueDate = classifiedItem.dueAt.flatMap { iso.date(from: $0) } ?? entry.dueAt
+
+            let item = TodoItem(
+                id: UUID(),
+                text: classifiedItem.text,
+                importance: importance,
+                isSensitive: classifiedItem.isSensitive || resolvedType == .sensitive,
+                type: resolvedType,
+                createdAt: entry.capturedAt,
+                dueAt: dueDate,
+                isDone: false,
+                notificationID: entry.notificationID
+            )
+            TodoStore.shared.add(item)
+            itemsAdded += 1
+
+            // Mark raw processed only after the TodoItem write succeeds.
+            RawStore.shared.markProcessed(entry.id)
+            rawsMarked += 1
         }
 
         // Schedule notifications
@@ -204,12 +217,21 @@ final class ClassifierService: ObservableObject {
     }
 
     private func parseResponse(_ raw: String) throws -> ClassifierResponse {
-        // Strip markdown code fences if present
+        // Strip markdown code fences if present.
         var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if cleaned.hasPrefix("```") {
             let lines = cleaned.components(separatedBy: "\n")
             cleaned = lines.dropFirst().dropLast().joined(separator: "\n")
         }
+
+        // Slice between the FIRST `{` and the LAST `}` so we survive
+        // any preamble ("Here's the JSON:") or trailing prose.
+        if let firstBrace = cleaned.firstIndex(of: "{"),
+           let lastBrace = cleaned.lastIndex(of: "}"),
+           firstBrace <= lastBrace {
+            cleaned = String(cleaned[firstBrace...lastBrace])
+        }
+
         guard let data = cleaned.data(using: .utf8) else {
             throw ClassifierError.badJSON("Could not encode response as UTF-8")
         }

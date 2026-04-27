@@ -42,6 +42,14 @@ final class RawStore: ObservableObject {
         writeFile(entries[index])
     }
 
+    /// Writes a `notificationID` onto the raw entry with the given id and
+    /// rewrites its file. No-op if the id is unknown.
+    func setNotificationID(for id: UUID, _ notificationID: String?) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[index].notificationID = notificationID
+        writeFile(entries[index])
+    }
+
     /// Removes the entry's JSON file and its in-memory record.
     func delete(_ id: UUID) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
