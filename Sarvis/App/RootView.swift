@@ -11,15 +11,16 @@ struct RootView: View {
         ZStack(alignment: .bottom) {
             Theme.LayeredBackground()
 
-            Group {
-                switch tab {
-                case .capture: InputView()
-                case .today:   TodayView()
-                case .library: ProcessedView()
-                }
+            // Horizontal swipe between tabs: Capture ↔ Entries ↔ Library.
+            // Tab-bar taps and edge swipes both update `tab`; the matched-geometry
+            // indicator on CustomTabBar tracks the same state either way.
+            TabView(selection: $tab) {
+                InputView().tag(Tab.capture)
+                TodayView().tag(Tab.today)
+                ProcessedView().tag(Tab.library)
             }
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
-            .animation(.easeInOut(duration: 0.25), value: tab)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .ignoresSafeArea(.keyboard)
 
             CustomTabBar(tab: $tab, ns: indicatorNS)
                 .padding(.horizontal, Theme.Spacing.lg)
