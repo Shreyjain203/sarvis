@@ -7,7 +7,7 @@ struct SettingsView: View {
     @AppStorage(LLMService.maxTokensDefaultsKey) private var maxTokens: Int = 1024
 
     @State private var apiKey: String = ""
-    @State private var gnewsKey: String = ""
+    @State private var newsTopic: String = ""
 
     var body: some View {
         NavigationStack {
@@ -17,7 +17,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                         header
                         apiKeyCard
-                        gnewsKeyCard
+                        newsTopicCard
                         modelCard
                         actionsRow
                         debugCard
@@ -43,7 +43,8 @@ struct SettingsView: View {
             }
             .onAppear {
                 apiKey = KeychainService.read(LLMService.apiKeyAccount) ?? ""
-                gnewsKey = KeychainService.read("gnews_api_key") ?? ""
+                newsTopic = UserDefaults.standard.string(forKey: RssProvider.topicDefaultsKey)
+                    ?? RssProvider.defaultTopic
             }
         }
     }
@@ -78,19 +79,21 @@ struct SettingsView: View {
         }
     }
 
-    private var gnewsKeyCard: some View {
+    private var newsTopicCard: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            sectionLabel("GNews API Key")
+            sectionLabel("News topic")
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                SecureField("Paste GNews key…", text: $gnewsKey)
-                    .font(.system(.body, design: .monospaced))
+                TextField(RssProvider.defaultTopic, text: $newsTopic)
+                    .font(Theme.Typography.body())
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .onSubmit { saveNewsTopic() }
                     .padding(.vertical, 10)
                 Divider().background(Theme.Palette.hairline)
                 HStack(spacing: Theme.Spacing.sm) {
                     Button {
-                        saveGNewsKey()
+                        saveNewsTopic()
                     } label: {
                         Text("Save")
                             .font(Theme.Typography.bodyEmphasis())
@@ -100,20 +103,20 @@ struct SettingsView: View {
 
                     Spacer()
 
-                    Button(role: .destructive) {
+                    Button {
                         Haptics.light()
-                        KeychainService.delete("gnews_api_key")
-                        gnewsKey = ""
-                        ToastCenter.shared.show("GNews key cleared")
+                        UserDefaults.standard.removeObject(forKey: RssProvider.topicDefaultsKey)
+                        newsTopic = RssProvider.defaultTopic
+                        ToastCenter.shared.show("Reset to default topic")
                     } label: {
-                        Text("Clear")
+                        Text("Reset")
                             .font(Theme.Typography.body())
-                            .foregroundStyle(.red.opacity(0.85))
+                            .foregroundStyle(Theme.Palette.muted)
                     }
                     .buttonStyle(.plain)
                 }
                 Divider().background(Theme.Palette.hairline)
-                Text("Stored in iOS Keychain. Get a free key at gnews.io.")
+                Text("Controls the Google News RSS search query used by the morning briefing.")
                     .font(Theme.Typography.meta())
                     .foregroundStyle(Theme.Palette.muted)
             }
@@ -246,14 +249,13 @@ struct SettingsView: View {
         }
     }
 
-    private func saveGNewsKey() {
-        do {
-            try KeychainService.save(gnewsKey, for: "gnews_api_key")
-            Haptics.success()
-            ToastCenter.shared.show("GNews key saved")
-        } catch {
-            // silently ignore save errors
-        }
+    private func saveNewsTopic() {
+        let trimmed = newsTopic.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = trimmed.isEmpty ? RssProvider.defaultTopic : trimmed
+        UserDefaults.standard.set(value, forKey: RssProvider.topicDefaultsKey)
+        newsTopic = value
+        Haptics.success()
+        ToastCenter.shared.show("News topic saved")
     }
 }
 

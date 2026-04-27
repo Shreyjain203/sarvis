@@ -13,7 +13,7 @@ When the user says "Phase 1," they mean the `v0.1.0` tag on `main` — the worki
 
 ## TL;DR
 
-iOS personal-AI-OS app. Messy text capture → LLM-structured behavior intelligence (todos, notes, shopping, diary, news summaries, motivational nudges, profile inference). Renamed from "ReminderApp" → **Sarvis** on 2026-04-25.
+iOS personal-AI-OS app. Messy text capture → LLM-structured behavior intelligence (todos, notes, shopping, diary, news summaries, motivational nudges, profile inference). Project name: **Sarvis** (since 2026-04-25).
 
 - **Repo:** https://github.com/Shreyjain203/sarvis (private)
 - **Bundle ID:** `com.shrey.sarvis` (host) · `com.shrey.sarvis.widget` (widget)
@@ -184,6 +184,8 @@ House conventions — every worker and instance must follow these.
 
 ## Update log
 
+- **2026-04-27** — Phase 2.1 — switched news pipeline from GNews to Google News RSS via new `RssProvider`; `GNewsProvider` deprecated (kept on disk); Settings GNews key row replaced with topic input; `NewsService` default provider updated.
+- **2026-04-27** — Phase 2.4 — `SarvisWidget` re-enabled, trimmed to `systemLarge` only with capture deep-link (`sarvis://capture`). Codesign: both targets `Automatic` + `DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)` on widget. `xcodegen generate` clean.
 - **2026-04-27** — **Phase 1 complete (`v0.1.0`).** Tagged on `main`. Marks the working foundation: capture, classify, Library, Todo tiles, completed history, debug viewer, app icon, notifications.
 - **2026-04-27** — todo-tiles polish: 4 equal-width tiles stacked vertically (Today / Tomorrow / Near Future / **Everything Else** for >10d or undated), tasks now render *inside* each tile's card (header + hairline divider + list inline). Today expanded by default; others collapsed. Replaced earlier large-Today + side-by-side layout.
 - **2026-04-27** — todo-tiles: Library → Todo replaced with a tiled timeline (`TodoSectionView`). Layout = full-width Today tile (~220pt) + Tomorrow + Near Future (10d) tiles side-by-side, each tappable to expand. Expanded tiles use a `List` with trailing swipe → "Done" (`todoStore.toggleDone(_:)` now stamps `completedAt` on done, clears on revert). Tapping a row opens `TodoEditSheet` (text / importance / sensitive / mandatory due date). Added `clock.arrow.circlepath` icon in the section header → push to `CompletedTodosView` (sorted by `completedAt` desc, `createdAt` desc fallback for legacy items, swipe-trailing → "Revert"). New always-have-a-date rule: classifier prompt requires `dueAt` for `type: "task"` (with fuzzy-phrase guidance — "soon" → today+1, "in 7 days" → today+7, etc.); `ClassifierService` has a safety net that defaults `dueAt` to today + 7d at 09:00 if a task lands without one, with the debug log noting `"task without dueAt → defaulted to +7d"`. `TodoItem` gains `completedAt: Date?` (Codable-friendly default = nil so legacy files decode cleanly).

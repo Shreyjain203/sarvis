@@ -9,7 +9,7 @@ final class NewsService: ObservableObject {
     private let provider: NewsProvider
     private let cache: NewsCache
 
-    init(provider: NewsProvider = GNewsProvider(), cache: NewsCache = NewsCache()) {
+    init(provider: NewsProvider = RssProvider(), cache: NewsCache = NewsCache()) {
         self.provider = provider
         self.cache = cache
     }

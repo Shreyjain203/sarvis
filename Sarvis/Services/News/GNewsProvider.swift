@@ -1,3 +1,4 @@
+// DEPRECATED as of v0.2.0 — replaced by RssProvider. Kept for reference; delete once RSS is stable.
 import Foundation
 
 struct GNewsProvider: NewsProvider {
