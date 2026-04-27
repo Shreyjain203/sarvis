@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - Section model
 
 enum ProcessedSection: String, CaseIterable, Identifiable {
+    case todo       = "todo"
     case notes      = "notes"
     case shopping   = "shopping"
     case diary      = "diary"
@@ -16,6 +17,7 @@ enum ProcessedSection: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
+        case .todo:        return "Todo"
         case .notes:       return "Notes"
         case .shopping:    return "Shopping"
         case .diary:       return "Diary"
@@ -29,6 +31,7 @@ enum ProcessedSection: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
+        case .todo:        return "checkmark.circle"
         case .notes:       return "doc.text"
         case .shopping:    return "cart"
         case .diary:       return "book.closed"
@@ -47,7 +50,7 @@ struct ProcessedView: View {
     @EnvironmentObject private var todoStore: TodoStore
     @StateObject private var profileStore = ProfileStore.shared
 
-    @State private var selectedSection: ProcessedSection = .notes
+    @State private var selectedSection: ProcessedSection = .todo
     @Namespace private var processedSectionNS
 
     // News: read from DailyArtifactStore + allow refresh
@@ -143,6 +146,7 @@ struct ProcessedView: View {
     @ViewBuilder
     private var sectionBody: some View {
         switch selectedSection {
+        case .todo:        todoSection
         case .notes:       notesSection
         case .shopping:    shoppingSection
         case .diary:       diarySection
@@ -151,6 +155,38 @@ struct ProcessedView: View {
         case .quotes:      quotesSection
         case .news:        newsSection
         case .profile:     profileSection
+        }
+    }
+
+    // MARK: - Todo
+
+    private var todoSection: some View {
+        let items = todoStore.items(in: .task)
+            .sorted { lhs, rhs in
+                if lhs.isDone != rhs.isDone { return !lhs.isDone }
+                if let l = lhs.dueAt, let r = rhs.dueAt { return l < r }
+                if lhs.dueAt != nil { return true }
+                if rhs.dueAt != nil { return false }
+                return lhs.createdAt > rhs.createdAt
+            }
+        return Group {
+            sectionHeader("Todo", symbol: "checkmark.circle")
+            if items.isEmpty {
+                emptyState(icon: "checkmark.circle", message: "No todos yet",
+                           detail: "Capture an entry that's actionable, then tap Process.")
+            } else {
+                VStack(spacing: Theme.Spacing.sm) {
+                    ForEach(items) { item in
+                        Button {
+                            Haptics.soft()
+                            todoStore.toggleDone(item.id)
+                        } label: {
+                            ReadOnlyTodoRow(item: item)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
         }
     }
 

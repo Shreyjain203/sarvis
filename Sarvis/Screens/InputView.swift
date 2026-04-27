@@ -6,15 +6,13 @@ struct InputView: View {
 
     @State private var text = ""
     @State private var importance: Importance = .medium
-    @State private var inputType: InputType = .task
     @State private var isSensitive = false
-    @State private var enableNotification = false
+    @State private var hasDueDate = false
     @State private var dueAt: Date = Date()
     @State private var showSettings = false
     @State private var saveError: String?
 
     @Namespace private var importanceNS
-    @Namespace private var inputTypeNS
     @FocusState private var editorFocused: Bool
 
     var body: some View {
@@ -26,7 +24,6 @@ struct InputView: View {
                         header
                         editorCard
                         importanceRow
-                        inputTypeRow
                         sensitiveAndDate
                         saveButton
                         statusFooter
@@ -132,46 +129,21 @@ struct InputView: View {
         }
     }
 
-    // MARK: InputType chips
-    private var inputTypeRow: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            label("Type")
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.Spacing.xs) {
-                    ForEach(InputType.allCases) { type in
-                        InputTypeChip(
-                            inputType: type,
-                            isSelected: inputType == type,
-                            ns: inputTypeNS
-                        ) {
-                            Haptics.soft()
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                inputType = type
-                                // Auto-sync sensitive toggle when user picks the sensitive type.
-                                if type == .sensitive { isSensitive = true }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // MARK: Sensitive + date
     private var sensitiveAndDate: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack(spacing: Theme.Spacing.sm) {
                 LockPill(isOn: $isSensitive)
                 Spacer()
-                NotificationPill(isOn: $enableNotification)
+                DueDatePill(isOn: $hasDueDate)
             }
 
-            if enableNotification {
+            if hasDueDate {
                 HStack {
-                    Image(systemName: "bell")
+                    Image(systemName: "calendar")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.Palette.muted)
-                    Text("Remind me")
+                    Text("Due")
                         .font(Theme.Typography.body())
                         .foregroundStyle(Theme.Palette.inkSoft)
                     Spacer()
@@ -184,7 +156,7 @@ struct InputView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: enableNotification)
+        .animation(.easeInOut(duration: 0.2), value: hasDueDate)
     }
 
     // MARK: Save button
@@ -254,32 +226,31 @@ struct InputView: View {
     }
 
     private func save() async {
-        let dueDate: Date? = enableNotification ? dueAt : nil
+        let dueDate: Date? = hasDueDate ? dueAt : nil
         var notificationID: String?
 
-        if enableNotification {
-            // Build a temporary item to schedule the notification.
+        if let due = dueDate {
             let temp = TodoItem(
                 text: text.trimmingCharacters(in: .whitespacesAndNewlines),
                 importance: importance,
                 isSensitive: isSensitive,
-                type: inputType,
-                dueAt: dueDate
+                type: .other,
+                dueAt: due
             )
             do {
-                notificationID = try await NotificationService.shared.schedule(temp, at: dueAt)
+                notificationID = try await NotificationService.shared.schedule(temp, at: due)
             } catch {
                 saveError = "Couldn't schedule notification: \(error.localizedDescription)"
                 return
             }
         }
 
-        // Persist as a raw entry. The returned in-memory TodoItem shares the
-        // raw's id; nothing is written to processed/<type>.json until the
-        // classifier runs.
+        // Persist as a raw entry with no suggestedType — the classifier picks
+        // the bucket. The returned in-memory TodoItem shares the raw's id;
+        // nothing is written to processed/<type>.json until the classifier runs.
         let saved = store.capture(
             text: text.trimmingCharacters(in: .whitespacesAndNewlines),
-            type: inputType,
+            type: nil,
             importance: importance,
             isSensitive: isSensitive,
             dueAt: dueDate
@@ -299,9 +270,8 @@ struct InputView: View {
 
         text = ""
         importance = .medium
-        inputType = .task
         isSensitive = false
-        enableNotification = false
+        hasDueDate = false
         dueAt = Date()
         saveError = nil
     }
@@ -331,42 +301,6 @@ private struct ImportanceChip: View {
                     RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
                         .fill(Theme.Palette.ink)
                         .matchedGeometryEffect(id: "importanceIndicator", in: ns)
-                } else {
-                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                        .strokeBorder(Theme.Palette.hairline, lineWidth: 0.5)
-                }
-            }
-            .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.chip))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - InputType chip
-private struct InputTypeChip: View {
-    let inputType: InputType
-    let isSelected: Bool
-    var ns: Namespace.ID
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: inputType.symbol)
-                    .font(.system(size: 11, weight: .medium))
-                Text(inputType.label)
-                    .font(Theme.Typography.chip())
-            }
-            .foregroundStyle(isSelected ? Color(uiColor: .systemBackground) : Theme.Palette.inkSoft)
-            .padding(.horizontal, Theme.Spacing.sm + 2)
-            .padding(.vertical, 8)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                        .fill(Theme.Palette.ink)
-                        .matchedGeometryEffect(id: "inputTypeIndicator", in: ns)
                 } else {
                     RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
                         .fill(.ultraThinMaterial)
@@ -417,8 +351,8 @@ private struct LockPill: View {
     }
 }
 
-// MARK: - Notification pill
-private struct NotificationPill: View {
+// MARK: - Due-date pill
+private struct DueDatePill: View {
     @Binding var isOn: Bool
 
     var body: some View {
@@ -429,9 +363,9 @@ private struct NotificationPill: View {
             }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: isOn ? "bell.fill" : "bell.slash")
+                Image(systemName: isOn ? "calendar" : "calendar.badge.plus")
                     .font(.system(size: 12, weight: .medium))
-                Text(isOn ? "Remind" : "No reminder")
+                Text(isOn ? "Due date" : "Add date")
                     .font(Theme.Typography.chip())
             }
             .foregroundStyle(isOn ? Theme.Palette.ink : Theme.Palette.muted)

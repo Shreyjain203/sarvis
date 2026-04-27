@@ -96,7 +96,7 @@ final class TodoStore: ObservableObject {
     @discardableResult
     func capture(
         text: String,
-        type: InputType,
+        type: InputType? = nil,
         importance: Importance = .medium,
         isSensitive: Bool = false,
         dueAt: Date? = nil
@@ -126,7 +126,7 @@ final class TodoStore: ObservableObject {
             text: text,
             importance: importance,
             isSensitive: isSensitive,
-            type: type,
+            type: type ?? .other,
             createdAt: entry.capturedAt,
             dueAt: dueAt,
             isDone: false,
