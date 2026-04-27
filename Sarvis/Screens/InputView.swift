@@ -2,7 +2,6 @@ import SwiftUI
 
 struct InputView: View {
     @EnvironmentObject var store: TodoStore
-    @StateObject private var llm = LLMService()
     @ObservedObject private var classifier = ClassifierService.shared
 
     @State private var text = ""
@@ -12,7 +11,6 @@ struct InputView: View {
     @State private var enableNotification = false
     @State private var dueAt: Date = Date()
     @State private var showSettings = false
-    @State private var llmDraft = ""
     @State private var saveError: String?
 
     @Namespace private var importanceNS
@@ -30,8 +28,6 @@ struct InputView: View {
                         importanceRow
                         inputTypeRow
                         sensitiveAndDate
-                        aiAssistCard
-                        processNowButton
                         saveButton
                         statusFooter
                         // Bottom space for the floating tab bar
@@ -40,11 +36,31 @@ struct InputView: View {
                     .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.top, Theme.Spacing.md)
                 }
+                .scrollDismissesKeyboard(.immediately)
                 .dismissKeyboardToolbar()
+            }
+            // Tap on any non-interactive area dismisses the keyboard.
+            // Buttons / TextEditor consume their own taps, so this only fires on background.
+            .onTapGesture {
+                if editorFocused { editorFocused = false }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        Haptics.light()
+                        Task { await runClassifier() }
+                    } label: {
+                        if classifier.isRunning {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 16, weight: .regular))
+                                .foregroundStyle(Theme.Palette.muted)
+                        }
+                    }
+                    .disabled(classifier.isRunning)
+
                     Button {
                         Haptics.light()
                         showSettings = true
@@ -56,7 +72,7 @@ struct InputView: View {
                 }
             }
             .sheet(isPresented: $showSettings) {
-                SettingsView().onDisappear { llm.reload() }
+                SettingsView()
             }
         }
     }
@@ -171,101 +187,6 @@ struct InputView: View {
         .animation(.easeInOut(duration: 0.2), value: enableNotification)
     }
 
-    // MARK: AI assist
-    private var aiAssistCard: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Button {
-                Task { await runLLM() }
-            } label: {
-                HStack(spacing: Theme.Spacing.xs) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 14, weight: .medium))
-                        .modifier(ShimmerEffect(active: llm.isSending))
-                    Text(llm.isSending ? "Thinking" : "Clean up with Claude")
-                        .font(Theme.Typography.bodyEmphasis())
-                    Spacer()
-                    if llm.isSending {
-                        ProgressView().controlSize(.small)
-                    }
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, Theme.Spacing.md)
-                .background {
-                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                }
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                        .strokeBorder(Theme.Palette.hairline, lineWidth: 0.5)
-                )
-                .foregroundStyle(text.isEmpty ? Theme.Palette.muted : Theme.Palette.ink)
-            }
-            .buttonStyle(.plain)
-            .disabled(text.isEmpty || llm.isSending)
-
-            if !llmDraft.isEmpty {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("Claude suggests")
-                        .font(Theme.Typography.meta())
-                        .foregroundStyle(Theme.Palette.muted)
-                        .textCase(.uppercase)
-                        .tracking(0.5)
-                    Text(llmDraft)
-                        .font(.system(.callout, design: .serif))
-                        .foregroundStyle(Theme.Palette.inkSoft)
-                    Button {
-                        Haptics.soft()
-                        text = llmDraft
-                        llmDraft = ""
-                    } label: {
-                        Text("Use this version")
-                            .font(Theme.Typography.meta())
-                            .foregroundStyle(Theme.Palette.ink)
-                            .underline()
-                    }
-                    .buttonStyle(.plain)
-                }
-                .themedCard(padding: Theme.Spacing.md,
-                            cornerRadius: Theme.Radius.card)
-            }
-
-            if let err = llm.lastError {
-                Text(err)
-                    .font(Theme.Typography.meta())
-                    .foregroundStyle(.red.opacity(0.85))
-            }
-        }
-    }
-
-    // MARK: Process now button
-    private var processNowButton: some View {
-        Button {
-            Task { await runClassifier() }
-        } label: {
-            HStack(spacing: Theme.Spacing.xs) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 14, weight: .medium))
-                Text(classifier.isRunning ? "Processing…" : "Process now")
-                    .font(Theme.Typography.bodyEmphasis())
-                Spacer()
-                if classifier.isRunning {
-                    ProgressView().controlSize(.small)
-                }
-            }
-            .padding(.vertical, 12)
-            .padding(.horizontal, Theme.Spacing.md)
-            .background {
-                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                    .strokeBorder(Theme.Palette.hairline, lineWidth: 0.5)
-            }
-            .foregroundStyle(classifier.isRunning ? Theme.Palette.muted : Theme.Palette.ink)
-        }
-        .buttonStyle(.plain)
-        .disabled(classifier.isRunning)
-    }
-
     // MARK: Save button
     private var saveButton: some View {
         Button {
@@ -305,7 +226,7 @@ struct InputView: View {
             .foregroundStyle(Theme.Palette.muted)
     }
 
-    // MARK: Logic (unchanged)
+    // MARK: Logic
     private func runClassifier() async {
         guard !classifier.isRunning else { return }
         do {
@@ -314,14 +235,6 @@ struct InputView: View {
         } catch {
             ToastCenter.shared.show("Process failed")
         }
-    }
-
-    private func runLLM() async {
-        let result = await llm.ask(
-            systemPrompt: PromptLibrary.body(for: "capture_cleanup", fallback: "Rewrite the user's note as one short, clear todo line. Keep their intent. No preamble."),
-            prompt: text
-        )
-        if let result { llmDraft = result.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
     private func save() async {
@@ -364,7 +277,6 @@ struct InputView: View {
         ToastCenter.shared.show("Saved")
 
         text = ""
-        llmDraft = ""
         importance = .medium
         inputType = .task
         isSensitive = false
@@ -513,36 +425,6 @@ private struct NotificationPill: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Shimmer for sparkles button
-private struct ShimmerEffect: ViewModifier {
-    let active: Bool
-    @State private var phase: CGFloat = -1
-
-    func body(content: Content) -> some View {
-        content
-            .overlay {
-                if active {
-                    LinearGradient(
-                        colors: [.clear, Color.white.opacity(0.6), .clear],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .frame(width: 30)
-                    .offset(x: phase * 60)
-                    .mask(content)
-                    .onAppear {
-                        withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
-                            phase = 1
-                        }
-                    }
-                }
-            }
-            .onChange(of: active) { _, isActive in
-                if !isActive { phase = -1 }
-            }
     }
 }
 
