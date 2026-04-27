@@ -210,7 +210,21 @@ final class ClassifierService: ObservableObject {
                 }
 
                 let importance = importanceFromString(classifiedItem.importance)
-                let dueDate = classifiedItem.dueAt.flatMap { iso.date(from: $0) } ?? entry.dueAt
+                var dueDate = classifiedItem.dueAt.flatMap { iso.date(from: $0) } ?? entry.dueAt
+
+                // Safety net: every task must carry a date so the tile bucketing
+                // never sees a nil dueAt. Default to today + 7d 09:00 when the
+                // LLM (or anything upstream) failed to produce one.
+                var defaultedDueAt = false
+                if resolvedType == .task && dueDate == nil {
+                    let cal = Calendar.current
+                    let base = cal.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+                    var comps = cal.dateComponents([.year, .month, .day], from: base)
+                    comps.hour = 9
+                    comps.minute = 0
+                    dueDate = cal.date(from: comps) ?? base
+                    defaultedDueAt = true
+                }
 
                 let item = TodoItem(
                     id: UUID(),
@@ -233,7 +247,9 @@ final class ClassifierService: ObservableObject {
                 distributionForDebug.append(.init(
                     rawSnippet: snippet(entry.text),
                     resolvedType: resolvedType.rawValue,
-                    action: "added"
+                    action: defaultedDueAt
+                        ? "added (task without dueAt → defaulted to +7d)"
+                        : "added"
                 ))
             }
 

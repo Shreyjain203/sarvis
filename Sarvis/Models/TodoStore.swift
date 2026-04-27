@@ -51,6 +51,8 @@ final class TodoStore: ObservableObject {
     func toggleDone(_ id: UUID) {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
         items[i].isDone.toggle()
+        // Stamp / clear completedAt to keep the completed-history view sortable.
+        items[i].completedAt = items[i].isDone ? Date() : nil
         writeTypeFile(items[i].type)
     }
 

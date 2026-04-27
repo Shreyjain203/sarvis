@@ -159,35 +159,13 @@ struct ProcessedView: View {
     }
 
     // MARK: - Todo
+    //
+    // The flat Todo list was replaced by `TodoSectionView`, which renders a
+    // tiled timeline (Today / Tomorrow / Near Future) with swipe-done,
+    // tap-to-edit, and a navigable completed-history view.
 
     private var todoSection: some View {
-        let items = todoStore.items(in: .task)
-            .sorted { lhs, rhs in
-                if lhs.isDone != rhs.isDone { return !lhs.isDone }
-                if let l = lhs.dueAt, let r = rhs.dueAt { return l < r }
-                if lhs.dueAt != nil { return true }
-                if rhs.dueAt != nil { return false }
-                return lhs.createdAt > rhs.createdAt
-            }
-        return Group {
-            sectionHeader("Todo", symbol: "checkmark.circle")
-            if items.isEmpty {
-                emptyState(icon: "checkmark.circle", message: "No todos yet",
-                           detail: "Capture an entry that's actionable, then tap Process.")
-            } else {
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(items) { item in
-                        Button {
-                            Haptics.soft()
-                            todoStore.toggleDone(item.id)
-                        } label: {
-                            ReadOnlyTodoRow(item: item)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
+        TodoSectionView()
     }
 
     // MARK: - Notes

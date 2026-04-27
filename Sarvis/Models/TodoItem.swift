@@ -37,4 +37,7 @@ struct TodoItem: Identifiable, Codable, Hashable {
     var dueAt: Date?
     var isDone: Bool = false
     var notificationID: String?
+    /// Timestamp recorded when `isDone` is flipped to `true`. Cleared when reverted.
+    /// Legacy items decoded without this key get `nil` (Codable synthesised init handles it).
+    var completedAt: Date?
 }
