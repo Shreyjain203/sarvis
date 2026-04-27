@@ -158,8 +158,24 @@ prompts/                 source-of-truth prompts (sync to Resources/Prompts via 
 
 Plan files + outputs live in `.dispatch/tasks/<task-id>/`. They're committed.
 
+## UI rules
+
+House conventions — every worker and instance must follow these.
+
+- **Theme tokens are the source of truth.** Never hardcode colors, radii, or spacing. Use `Theme.Spacing`, `Theme.Radius`, `Theme.Typography`, `Theme.Palette`.
+- **Screen root.** Every screen starts with `ZStack { Theme.LayeredBackground(); content }`.
+- **Navigation.** Use `NavigationStack` with `.navigationBarTitleDisplayMode(.inline)`. Primary actions go in `ToolbarItem(placement: .topBarTrailing)` (or `ToolbarItemGroup` for multiple). Toolbar icons: `.font(.system(size: 16, weight: .regular))` and `Theme.Palette.muted`.
+- **Buttons.** Use `.buttonStyle(.plain)` with hand-rolled backgrounds (`RoundedRectangle` / `Capsule` with `.ultraThinMaterial` + hairline stroke).
+- **Animations.** Chip selection: `.spring(response: 0.35, dampingFraction: 0.85)`. Fades: `.easeInOut(duration: 0.2)`.
+- **Haptics.** `Haptics.soft()` on selection, `Haptics.light()` on tap, `Haptics.success()` on save.
+- **Tab bar clearance.** Every scrollable screen must end with `Color.clear.frame(height: 96)` to reserve space for the floating tab bar.
+- **Cards and chips.** Use `.themedCard(padding:cornerRadius:)` modifier. Radii: `Theme.Radius.chip` for chips, `Theme.Radius.card` for cards, `Theme.Radius.hero` for hero surfaces.
+- **Keyboard dismiss.** Add `.scrollDismissesKeyboard(.immediately)` to `ScrollView`s and `.onTapGesture` on the outer `ZStack` to release `@FocusState`. Keep `.dismissKeyboardToolbar()` as a fallback on text fields.
+- **Dynamic-UI screens.** Go through `ElementRegistry` + `DynamicScreen` + `ScreenDefinition`. New element types must be registered in `ElementRegistry`.
+
 ## Update log
 
+- **2026-04-26** — ui-updates-wave-2: Entries tab rebuilt (all items, date-partitioned timeline, descending); tab label "Today" → "Entries" (`tray` icon); Library `today` section removed (default now `notes`); UI rules section added to STATE.md.
 - **2026-04-26** — widget extension temporarily disabled in `project.yml` (device codesign failure on physical iPhone); host app builds + runs without it.
 - **2026-04-26** — duplicate `ShoppingUrgency` enum collision fixed (display-only props moved into an extension on the canonical enum in `ShoppingItemConfig.swift`).
 - **2026-04-26** — processed viewer tab shipped (todos, notes, shopping, diary, ideas, suggestions, quotes, news, profile).

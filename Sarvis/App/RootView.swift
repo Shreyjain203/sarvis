@@ -44,7 +44,7 @@ private struct CustomTabBar: View {
     var body: some View {
         HStack(spacing: Theme.Spacing.xs) {
             tabButton(.capture, label: "Capture", icon: "square.and.pencil")
-            tabButton(.today, label: "Today", icon: "leaf")
+            tabButton(.today, label: "Entries", icon: "tray")
             tabButton(.library, label: "Library", icon: "tray.full")
         }
         .padding(Theme.Spacing.xs)

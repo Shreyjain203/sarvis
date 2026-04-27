@@ -3,7 +3,6 @@ import SwiftUI
 // MARK: - Section model
 
 enum ProcessedSection: String, CaseIterable, Identifiable {
-    case today      = "today"
     case notes      = "notes"
     case shopping   = "shopping"
     case diary      = "diary"
@@ -17,7 +16,6 @@ enum ProcessedSection: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .today:       return "Today"
         case .notes:       return "Notes"
         case .shopping:    return "Shopping"
         case .diary:       return "Diary"
@@ -31,7 +29,6 @@ enum ProcessedSection: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .today:       return "leaf"
         case .notes:       return "doc.text"
         case .shopping:    return "cart"
         case .diary:       return "book.closed"
@@ -50,7 +47,7 @@ struct ProcessedView: View {
     @EnvironmentObject private var todoStore: TodoStore
     @StateObject private var profileStore = ProfileStore.shared
 
-    @State private var selectedSection: ProcessedSection = .today
+    @State private var selectedSection: ProcessedSection = .notes
     @Namespace private var processedSectionNS
 
     // News: read from DailyArtifactStore + allow refresh
@@ -146,7 +143,6 @@ struct ProcessedView: View {
     @ViewBuilder
     private var sectionBody: some View {
         switch selectedSection {
-        case .today:       todaySection
         case .notes:       notesSection
         case .shopping:    shoppingSection
         case .diary:       diarySection
@@ -155,76 +151,6 @@ struct ProcessedView: View {
         case .quotes:      quotesSection
         case .news:        newsSection
         case .profile:     profileSection
-        }
-    }
-
-    // MARK: - Today
-
-    private var todaySection: some View {
-        let items = todoStore.todayItems
-        return Group {
-            sectionHeader("Today", symbol: "leaf")
-            if items.isEmpty {
-                emptyState(icon: "leaf", message: "Nothing due today",
-                           detail: "Capture something on the Capture tab.")
-            } else {
-                // Sensitive items first
-                let sensitive = items.filter { $0.isSensitive }
-                if !sensitive.isEmpty {
-                    sensitiveSectionBlock(sensitive)
-                }
-                // Then group by importance (high → low)
-                ForEach(Importance.allCases.reversed()) { imp in
-                    let group = items.filter { $0.importance == imp && !$0.isSensitive }
-                    if !group.isEmpty {
-                        importanceGroupBlock(imp, items: group)
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func sensitiveSectionBlock(_ items: [TodoItem]) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(spacing: 6) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 12, weight: .medium))
-                Text("Sensitive")
-                    .font(Theme.Typography.chip())
-            }
-            .foregroundStyle(Theme.Palette.sensitiveAccent)
-
-            VStack(spacing: Theme.Spacing.sm) {
-                ForEach(items) { ReadOnlyTodoRow(item: $0) }
-            }
-            .padding(Theme.Spacing.sm)
-            .background {
-                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                    .fill(Theme.Palette.sensitiveTint)
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                    .strokeBorder(Color.red.opacity(0.18), lineWidth: 0.5)
-            )
-        }
-    }
-
-    @ViewBuilder
-    private func importanceGroupBlock(_ imp: Importance, items: [TodoItem]) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(Theme.Palette.dot(for: imp))
-                    .frame(width: 7, height: 7)
-                Text(imp.label)
-                    .font(Theme.Typography.sectionTitle())
-                    .foregroundStyle(Theme.Palette.inkSoft)
-            }
-
-            VStack(spacing: Theme.Spacing.sm) {
-                ForEach(items) { ReadOnlyTodoRow(item: $0) }
-            }
         }
     }
 

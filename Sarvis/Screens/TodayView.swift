@@ -3,6 +3,20 @@ import SwiftUI
 struct TodayView: View {
     @EnvironmentObject var store: TodoStore
 
+    // Group items by start-of-day of createdAt, sorted descending
+    private var groupedItems: [(dayKey: Date, items: [TodoItem])] {
+        let sorted = store.items.sorted { $0.createdAt > $1.createdAt }
+        let cal = Calendar.current
+        var dict: [Date: [TodoItem]] = [:]
+        for item in sorted {
+            let key = cal.startOfDay(for: item.createdAt)
+            dict[key, default: []].append(item)
+        }
+        return dict
+            .sorted { $0.key > $1.key }
+            .map { (dayKey: $0.key, items: $0.value) }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -11,18 +25,11 @@ struct TodayView: View {
                     VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                         header
 
-                        if store.todayItems.isEmpty {
+                        if store.items.isEmpty {
                             emptyState
                         } else {
-                            if !store.sensitiveItems.isEmpty {
-                                sensitiveSection
-                            }
-
-                            ForEach(Importance.allCases.reversed()) { imp in
-                                let items = store.todayItems(importance: imp)
-                                if !items.isEmpty {
-                                    importanceSection(imp, items: items)
-                                }
+                            ForEach(groupedItems, id: \.dayKey) { group in
+                                daySection(dayKey: group.dayKey, items: group.items)
                             }
                         }
 
@@ -32,6 +39,7 @@ struct TodayView: View {
                     .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.top, Theme.Spacing.md)
                 }
+                .scrollDismissesKeyboard(.immediately)
             }
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -40,27 +48,21 @@ struct TodayView: View {
     // MARK: Header
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Today")
+            Text("Entries")
                 .font(Theme.Typography.title())
                 .foregroundStyle(Theme.Palette.ink)
-            Text(Self.dateFormatter.string(from: Date()))
+            Text("Everything you've captured.")
                 .font(Theme.Typography.meta())
                 .foregroundStyle(Theme.Palette.muted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "EEEE, MMMM d"
-        return f
-    }()
-
     // MARK: Empty state
     private var emptyState: some View {
         VStack(spacing: Theme.Spacing.xs) {
             Spacer(minLength: Theme.Spacing.xxl)
-            Text("Nothing for today")
+            Text("Nothing captured yet")
                 .font(Theme.Typography.emptyState())
                 .foregroundStyle(Theme.Palette.inkSoft)
             Text("Capture something on the other tab — or simply rest.")
@@ -73,56 +75,40 @@ struct TodayView: View {
         .padding(.top, Theme.Spacing.xl)
     }
 
-    // MARK: Sensitive section
-    private var sensitiveSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(spacing: 6) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 12, weight: .medium))
-                Text("Sensitive")
-                    .font(Theme.Typography.chip())
-            }
-            .foregroundStyle(Theme.Palette.sensitiveAccent)
-
-            VStack(spacing: Theme.Spacing.sm) {
-                ForEach(store.sensitiveItems) { item in
-                    TodoRow(item: item)
-                }
-            }
-            .padding(Theme.Spacing.sm)
-            .background {
-                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                    .fill(Theme.Palette.sensitiveTint)
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                    .strokeBorder(Color.red.opacity(0.18), lineWidth: 0.5)
-            )
-
-            Text("These items were marked sensitive. Don't share casually.")
-                .font(Theme.Typography.meta())
-                .foregroundStyle(Theme.Palette.muted)
-                .padding(.leading, Theme.Spacing.xs)
-        }
-    }
-
-    // MARK: Importance section
+    // MARK: Day section
     @ViewBuilder
-    private func importanceSection(_ imp: Importance, items: [TodoItem]) -> some View {
+    private func daySection(dayKey: Date, items: [TodoItem]) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(Theme.Palette.dot(for: imp))
-                    .frame(width: 7, height: 7)
-                Text(imp.label)
-                    .font(Theme.Typography.sectionTitle())
-                    .foregroundStyle(Theme.Palette.inkSoft)
-            }
+            Text(Self.sectionTitle(for: dayKey))
+                .font(Theme.Typography.sectionTitle())
+                .foregroundStyle(Theme.Palette.inkSoft)
 
             VStack(spacing: Theme.Spacing.sm) {
                 ForEach(items) { TodoRow(item: $0) }
             }
         }
+    }
+
+    // MARK: Section title helpers
+    private static func sectionTitle(for day: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(day) { return "Today" }
+        if cal.isDateInYesterday(day) { return "Yesterday" }
+        let now = Date()
+        if let diff = cal.dateComponents([.day], from: day, to: now).day, diff < 7 {
+            let df = DateFormatter()
+            df.dateFormat = "EEEE"
+            return df.string(from: day)
+        }
+        let nowYear = cal.component(.year, from: now)
+        let dayYear = cal.component(.year, from: day)
+        let df = DateFormatter()
+        if dayYear == nowYear {
+            df.dateFormat = "MMM d"
+        } else {
+            df.dateFormat = "MMM d, yyyy"
+        }
+        return df.string(from: day)
     }
 }
 
