@@ -112,7 +112,7 @@ Sarvis/
     Elements/
       Input/             TextInput, CalendarPicker, TypeChip, ImportancePicker, ToggleRow, ShoppingItem
       Display/           SummaryCard, ActionButton
-  Screens/               InputView (legacy capture), CaptureScreenDynamic, TodayView, ProcessedView (Library tab), SettingsView, QuickCaptureSheet
+  Screens/               InputView (legacy capture), CaptureScreenDynamic, TodayView, ProcessedView (Library tab), SettingsView, QuickCaptureSheet, ClassifierDebugView (Settings → Debug)
   Resources/
     Prompts/             bundled .md mirror of /prompts
     Quotes/              seed.json
@@ -177,6 +177,7 @@ House conventions — every worker and instance must follow these.
 
 ## Update log
 
+- **2026-04-26** — debug-viewer-and-icon: hidden classifier debug screen behind Settings → Debug shows the most recent LLM round (input raws, prompt sent, raw response, parsed JSON, distribution log, error). `ClassifierService` now publishes `lastRun: ClassifierDebugRecord?`, populated on both success and failure paths inside `classifyUnprocessed()`. Replaced placeholder app icon with the monkey image from `~/Downloads/output.jpg` — full iPhone+iPad+marketing PNG set generated via `sips` from a 1024×1024 opaque master, `Contents.json` rewritten with the size→filename map.
 - **2026-04-26** — process-now-fix: capture is now raw-only (dual-write removed); Entries tab reads unprocessed raws via `RawStore` and renders them with a new `RawEntryRow`; `ClassifierService` always materialises a `TodoItem` per classified raw, respects user-picked `suggestedType`, carries `notificationID` forward, bumps `maxTokens` to 4096, and parses by slicing between first `{` and last `}`. `RawEntry` gains an optional `notificationID`; `RawStore.setNotificationID(for:_:)` lets `InputView.save()` write it back. Toast on Process now shows the real error string.
 - **2026-04-26** — ui-updates-wave-2: Entries tab rebuilt (all items, date-partitioned timeline, descending); tab label "Today" → "Entries" (`tray` icon); Library `today` section removed (default now `notes`); UI rules section added to STATE.md.
 - **2026-04-26** — widget extension temporarily disabled in `project.yml` (device codesign failure on physical iPhone); host app builds + runs without it.

@@ -20,6 +20,7 @@ struct SettingsView: View {
                         gnewsKeyCard
                         modelCard
                         actionsRow
+                        debugCard
                     }
                     .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.top, Theme.Spacing.md)
@@ -150,6 +151,36 @@ struct SettingsView: View {
                             .foregroundStyle(Theme.Palette.ink)
                     }
                 }
+            }
+            .themedCard(padding: Theme.Spacing.md, cornerRadius: Theme.Radius.card)
+        }
+    }
+
+    private var debugCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            sectionLabel("Debug")
+            VStack(alignment: .leading, spacing: 0) {
+                NavigationLink {
+                    ClassifierDebugView()
+                } label: {
+                    HStack {
+                        Text("View last classifier run")
+                            .font(Theme.Typography.body())
+                            .foregroundStyle(Theme.Palette.ink)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.Palette.muted)
+                    }
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Divider().background(Theme.Palette.hairline)
+                Text("Inspect the prompt sent, raw response, parsed JSON, and per-item routing for the most recent classification round.")
+                    .font(Theme.Typography.meta())
+                    .foregroundStyle(Theme.Palette.muted)
+                    .padding(.top, 6)
             }
             .themedCard(padding: Theme.Spacing.md, cornerRadius: Theme.Radius.card)
         }

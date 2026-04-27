@@ -36,6 +36,42 @@ private struct ProfileDeltas: Decodable {
     let traits: [String]?
 }
 
+// MARK: - Debug record
+
+/// In-memory snapshot of the most recent classifier round, surfaced via the
+/// hidden Debug screen in Settings. Not persisted to disk — only the most
+/// recent run is kept so the user can inspect what the LLM actually did.
+struct ClassifierDebugRecord {
+    /// One entry per classified item, capturing the resolution decision so the
+    /// user can see why an item ended up where it did.
+    struct DistributionEntry {
+        /// First ~80 chars of the raw entry's text.
+        let rawSnippet: String
+        /// Resolved final type (after suggestedType-vs-LLM reconciliation).
+        let resolvedType: String
+        /// Outcome — "added", or "skipped: <reason>".
+        let action: String
+    }
+
+    let timestamp: Date
+    /// Snapshot of every raw entry fed into this round.
+    let inputRaws: [RawEntry]
+    /// Final substituted system prompt.
+    let systemPrompt: String
+    /// Final user message body.
+    let userPrompt: String
+    /// Raw LLM response string (nil if the LLM call returned nil).
+    let rawResponse: String?
+    /// Pretty-printed JSON of the parsed response, or nil if parse failed.
+    let parsedJSONPretty: String?
+    /// Per-item routing decisions.
+    let distribution: [DistributionEntry]
+    /// Number of TodoItems written this round.
+    let itemsAdded: Int
+    /// Error description if the round threw.
+    let errorDescription: String?
+}
+
 // MARK: - ClassifierService
 
 @MainActor
@@ -43,6 +79,10 @@ final class ClassifierService: ObservableObject {
     static let shared = ClassifierService()
 
     @Published private(set) var isRunning = false
+
+    /// Most recent classifier round — populated on both success and failure.
+    /// Surfaced via `ClassifierDebugView` (Settings → Debug).
+    @Published private(set) var lastRun: ClassifierDebugRecord?
 
     private let llm = LLMService()
     private let iso = ISO8601DateFormatter()
@@ -67,6 +107,7 @@ final class ClassifierService: ObservableObject {
 
         let unprocessed = RawStore.shared.unprocessed()
         guard !unprocessed.isEmpty else {
+            // Nothing to do — also clear any stale last-run for clarity.
             return ClassifierReport(itemsAdded: 0, rawsMarked: 0, notificationsScheduled: 0)
         }
 
@@ -88,101 +129,219 @@ final class ClassifierService: ObservableObject {
 
         let userMessage = "Entries:\n\(entriesJSON)\n\nProfile:\n\(profileJSON)\n\nToday: \(today)"
 
-        // Call LLM with a higher token budget than the chat default — batch
-        // classification can produce large JSON, and 1024 truncates it.
-        var classifierOptions = llm.options
-        classifierOptions.maxTokens = max(classifierOptions.maxTokens, 4096)
-        guard let rawResponse = await llm.ask(
-            systemPrompt: filledPrompt,
-            prompt: userMessage,
-            options: classifierOptions
-        ) else {
-            throw ClassifierError.llmFailed(llm.lastError ?? "No response from LLM")
-        }
+        // Local debug-record accumulators. We populate `lastRun` in any exit
+        // path (success, throw, even rethrow) so the user always sees the
+        // most recent attempt.
+        var rawResponseForDebug: String?
+        var parsedPrettyForDebug: String?
+        var distributionForDebug: [ClassifierDebugRecord.DistributionEntry] = []
+        var itemsAddedForDebug = 0
 
-        // Parse JSON response
-        let response = try parseResponse(rawResponse)
-
-        // Build a lookup for unprocessed entries by UUID string
-        var entryByID: [String: RawEntry] = [:]
-        for entry in unprocessed {
-            entryByID[entry.id.uuidString] = entry
-        }
-
-        // Distribute items
-        var itemsAdded = 0
-        var rawsMarked = 0
-
-        for classifiedItem in response.items {
-            guard let entry = entryByID[classifiedItem.rawId] else { continue }
-
-            // Type resolution: respect the user's pick at capture time. The
-            // LLM's cleaned text / importance / dueAt / isSensitive still
-            // apply.
-            let resolvedType: InputType
-            if let userPick = entry.suggestedType {
-                resolvedType = userPick
-            } else {
-                resolvedType = InputType(rawValue: classifiedItem.type) ?? .other
-            }
-
-            let importance = importanceFromString(classifiedItem.importance)
-            let dueDate = classifiedItem.dueAt.flatMap { iso.date(from: $0) } ?? entry.dueAt
-
-            let item = TodoItem(
-                id: UUID(),
-                text: classifiedItem.text,
-                importance: importance,
-                isSensitive: classifiedItem.isSensitive || resolvedType == .sensitive,
-                type: resolvedType,
-                createdAt: entry.capturedAt,
-                dueAt: dueDate,
-                isDone: false,
-                notificationID: entry.notificationID
+        func recordDebug(error: Error?) {
+            self.lastRun = ClassifierDebugRecord(
+                timestamp: Date(),
+                inputRaws: unprocessed,
+                systemPrompt: filledPrompt,
+                userPrompt: userMessage,
+                rawResponse: rawResponseForDebug,
+                parsedJSONPretty: parsedPrettyForDebug,
+                distribution: distributionForDebug,
+                itemsAdded: itemsAddedForDebug,
+                errorDescription: error.map { ($0 as? LocalizedError)?.errorDescription ?? "\($0)" }
             )
-            TodoStore.shared.add(item)
-            itemsAdded += 1
-
-            // Mark raw processed only after the TodoItem write succeeds.
-            RawStore.shared.markProcessed(entry.id)
-            rawsMarked += 1
         }
 
-        // Schedule notifications
-        var notificationsScheduled = 0
-        for notification in response.notifications {
-            guard let fireDate = iso.date(from: notification.fireAt),
-                  fireDate > Date() else { continue }
+        do {
+            // Call LLM with a higher token budget than the chat default — batch
+            // classification can produce large JSON, and 1024 truncates it.
+            var classifierOptions = llm.options
+            classifierOptions.maxTokens = max(classifierOptions.maxTokens, 4096)
+            guard let rawResponse = await llm.ask(
+                systemPrompt: filledPrompt,
+                prompt: userMessage,
+                options: classifierOptions
+            ) else {
+                let err = ClassifierError.llmFailed(llm.lastError ?? "No response from LLM")
+                recordDebug(error: err)
+                throw err
+            }
+            rawResponseForDebug = rawResponse
+
+            // Parse JSON response
+            let response: ClassifierResponse
             do {
-                try await NotificationService.shared.schedule(
-                    title: notification.title,
-                    body: notification.body,
-                    at: fireDate
-                )
-                notificationsScheduled += 1
+                response = try parseResponse(rawResponse)
             } catch {
-                print("ClassifierService: notification scheduling failed:", error)
+                recordDebug(error: error)
+                throw error
             }
-        }
+            parsedPrettyForDebug = prettyPrint(response: response)
 
-        // Apply profile deltas
-        if let deltas = response.profileDeltas {
-            var partial: [String: Any] = [:]
-            if let prefs = deltas.preferences { partial["preferences"] = prefs }
-            if let traits = deltas.traits { partial["traits"] = traits }
-            if !partial.isEmpty {
-                ProfileStore.shared.merge(partial)
+            // Build a lookup for unprocessed entries by UUID string
+            var entryByID: [String: RawEntry] = [:]
+            for entry in unprocessed {
+                entryByID[entry.id.uuidString] = entry
             }
-        }
 
-        return ClassifierReport(
-            itemsAdded: itemsAdded,
-            rawsMarked: rawsMarked,
-            notificationsScheduled: notificationsScheduled
-        )
+            // Distribute items
+            var itemsAdded = 0
+            var rawsMarked = 0
+            var matchedRawIDs = Set<String>()
+
+            for classifiedItem in response.items {
+                guard let entry = entryByID[classifiedItem.rawId] else {
+                    distributionForDebug.append(.init(
+                        rawSnippet: snippet(classifiedItem.rawId),
+                        resolvedType: classifiedItem.type,
+                        action: "skipped: rawId not in this batch"
+                    ))
+                    continue
+                }
+                matchedRawIDs.insert(classifiedItem.rawId)
+
+                // Type resolution: respect the user's pick at capture time. The
+                // LLM's cleaned text / importance / dueAt / isSensitive still
+                // apply.
+                let resolvedType: InputType
+                if let userPick = entry.suggestedType {
+                    resolvedType = userPick
+                } else {
+                    resolvedType = InputType(rawValue: classifiedItem.type) ?? .other
+                }
+
+                let importance = importanceFromString(classifiedItem.importance)
+                let dueDate = classifiedItem.dueAt.flatMap { iso.date(from: $0) } ?? entry.dueAt
+
+                let item = TodoItem(
+                    id: UUID(),
+                    text: classifiedItem.text,
+                    importance: importance,
+                    isSensitive: classifiedItem.isSensitive || resolvedType == .sensitive,
+                    type: resolvedType,
+                    createdAt: entry.capturedAt,
+                    dueAt: dueDate,
+                    isDone: false,
+                    notificationID: entry.notificationID
+                )
+                TodoStore.shared.add(item)
+                itemsAdded += 1
+
+                // Mark raw processed only after the TodoItem write succeeds.
+                RawStore.shared.markProcessed(entry.id)
+                rawsMarked += 1
+
+                distributionForDebug.append(.init(
+                    rawSnippet: snippet(entry.text),
+                    resolvedType: resolvedType.rawValue,
+                    action: "added"
+                ))
+            }
+
+            // Note any unprocessed raws the LLM didn't return in its items list.
+            for entry in unprocessed where !matchedRawIDs.contains(entry.id.uuidString) {
+                distributionForDebug.append(.init(
+                    rawSnippet: snippet(entry.text),
+                    resolvedType: entry.suggestedType?.rawValue ?? "—",
+                    action: "skipped: not returned by LLM"
+                ))
+            }
+
+            itemsAddedForDebug = itemsAdded
+
+            // Schedule notifications
+            var notificationsScheduled = 0
+            for notification in response.notifications {
+                guard let fireDate = iso.date(from: notification.fireAt),
+                      fireDate > Date() else { continue }
+                do {
+                    try await NotificationService.shared.schedule(
+                        title: notification.title,
+                        body: notification.body,
+                        at: fireDate
+                    )
+                    notificationsScheduled += 1
+                } catch {
+                    print("ClassifierService: notification scheduling failed:", error)
+                }
+            }
+
+            // Apply profile deltas
+            if let deltas = response.profileDeltas {
+                var partial: [String: Any] = [:]
+                if let prefs = deltas.preferences { partial["preferences"] = prefs }
+                if let traits = deltas.traits { partial["traits"] = traits }
+                if !partial.isEmpty {
+                    ProfileStore.shared.merge(partial)
+                }
+            }
+
+            recordDebug(error: nil)
+
+            return ClassifierReport(
+                itemsAdded: itemsAdded,
+                rawsMarked: rawsMarked,
+                notificationsScheduled: notificationsScheduled
+            )
+        } catch {
+            // Any error path that didn't already record (e.g. an unexpected
+            // throw from the deeper code) gets captured here.
+            if lastRun?.timestamp == nil || (lastRun.map { Date().timeIntervalSince($0.timestamp) > 1 } ?? true) {
+                recordDebug(error: error)
+            }
+            throw error
+        }
     }
 
     // MARK: - Private helpers
+
+    private func snippet(_ s: String, max: Int = 80) -> String {
+        let trimmed = s.replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        if trimmed.count <= max { return trimmed }
+        return String(trimmed.prefix(max)) + "…"
+    }
+
+    private func prettyPrint(response: ClassifierResponse) -> String? {
+        // We can't directly re-encode the private `ClassifierResponse` without
+        // making it Encodable. Instead, build a `[String: Any]` mirror so we
+        // can run it through `JSONSerialization` for pretty output.
+        var items: [[String: Any]] = []
+        for it in response.items {
+            var d: [String: Any] = [
+                "rawId": it.rawId,
+                "type": it.type,
+                "text": it.text,
+                "importance": it.importance,
+                "isSensitive": it.isSensitive
+            ]
+            if let due = it.dueAt { d["dueAt"] = due }
+            items.append(d)
+        }
+        var notifs: [[String: Any]] = []
+        for n in response.notifications {
+            notifs.append([
+                "title": n.title,
+                "body": n.body,
+                "fireAt": n.fireAt
+            ])
+        }
+        var deltas: [String: Any] = [:]
+        if let p = response.profileDeltas {
+            if let prefs = p.preferences { deltas["preferences"] = prefs }
+            if let traits = p.traits { deltas["traits"] = traits }
+        }
+        let dict: [String: Any] = [
+            "items": items,
+            "notifications": notifs,
+            "profileDeltas": deltas
+        ]
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: dict,
+            options: [.prettyPrinted, .sortedKeys]
+        ),
+              let str = String(data: data, encoding: .utf8) else { return nil }
+        return str
+    }
 
     private func buildEntriesJSON(_ entries: [RawEntry]) -> String {
         let encoder = JSONEncoder()
