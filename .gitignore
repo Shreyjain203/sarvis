@@ -51,3 +51,6 @@ project.local.yml
 # Dispatch worker IPC scratch (keep plans + outputs, drop transient files)
 .dispatch/tasks/*/ipc/
 .dispatch/tasks/*/context.md
+
+# Claude worktrees (transient agent workspaces)
+.claude/

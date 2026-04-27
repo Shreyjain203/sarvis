@@ -4,6 +4,13 @@
 >
 > **Last updated:** 2026-04-27
 
+## Phase status
+
+- ✅ **Phase 1 — Foundation (`v0.1.0`, 2026-04-27).** Capture → classify → render pipeline working end-to-end. Library tab with all sections live. Todo tiled timeline (Today / Tomorrow / Near Future / Everything Else) with swipe-done, tap-to-edit, completed history. Classifier debug viewer in Settings. Notifications + morning/quote jobs scheduled. Widget code present but disabled. Tagged at commit on `main`.
+- ⏳ **Phase 2 — Premium upgrade.** Scope TBD; user will direct.
+
+When the user says "Phase 1," they mean the `v0.1.0` tag on `main` — the working baseline above. Future phases will add their own tags (`v0.2.0`, etc.).
+
 ## TL;DR
 
 iOS personal-AI-OS app. Messy text capture → LLM-structured behavior intelligence (todos, notes, shopping, diary, news summaries, motivational nudges, profile inference). Renamed from "ReminderApp" → **Sarvis** on 2026-04-25.
@@ -177,6 +184,8 @@ House conventions — every worker and instance must follow these.
 
 ## Update log
 
+- **2026-04-27** — **Phase 1 complete (`v0.1.0`).** Tagged on `main`. Marks the working foundation: capture, classify, Library, Todo tiles, completed history, debug viewer, app icon, notifications.
+- **2026-04-27** — todo-tiles polish: 4 equal-width tiles stacked vertically (Today / Tomorrow / Near Future / **Everything Else** for >10d or undated), tasks now render *inside* each tile's card (header + hairline divider + list inline). Today expanded by default; others collapsed. Replaced earlier large-Today + side-by-side layout.
 - **2026-04-27** — todo-tiles: Library → Todo replaced with a tiled timeline (`TodoSectionView`). Layout = full-width Today tile (~220pt) + Tomorrow + Near Future (10d) tiles side-by-side, each tappable to expand. Expanded tiles use a `List` with trailing swipe → "Done" (`todoStore.toggleDone(_:)` now stamps `completedAt` on done, clears on revert). Tapping a row opens `TodoEditSheet` (text / importance / sensitive / mandatory due date). Added `clock.arrow.circlepath` icon in the section header → push to `CompletedTodosView` (sorted by `completedAt` desc, `createdAt` desc fallback for legacy items, swipe-trailing → "Revert"). New always-have-a-date rule: classifier prompt requires `dueAt` for `type: "task"` (with fuzzy-phrase guidance — "soon" → today+1, "in 7 days" → today+7, etc.); `ClassifierService` has a safety net that defaults `dueAt` to today + 7d at 09:00 if a task lands without one, with the debug log noting `"task without dueAt → defaulted to +7d"`. `TodoItem` gains `completedAt: Date?` (Codable-friendly default = nil so legacy files decode cleanly).
 - **2026-04-26** — debug-viewer-and-icon: hidden classifier debug screen behind Settings → Debug shows the most recent LLM round (input raws, prompt sent, raw response, parsed JSON, distribution log, error). `ClassifierService` now publishes `lastRun: ClassifierDebugRecord?`, populated on both success and failure paths inside `classifyUnprocessed()`. Replaced placeholder app icon with the monkey image from `~/Downloads/output.jpg` — full iPhone+iPad+marketing PNG set generated via `sips` from a 1024×1024 opaque master, `Contents.json` rewritten with the size→filename map.
 - **2026-04-26** — process-now-fix: capture is now raw-only (dual-write removed); Entries tab reads unprocessed raws via `RawStore` and renders them with a new `RawEntryRow`; `ClassifierService` always materialises a `TodoItem` per classified raw, respects user-picked `suggestedType`, carries `notificationID` forward, bumps `maxTokens` to 4096, and parses by slicing between first `{` and last `}`. `RawEntry` gains an optional `notificationID`; `RawStore.setNotificationID(for:_:)` lets `InputView.save()` write it back. Toast on Process now shows the real error string.

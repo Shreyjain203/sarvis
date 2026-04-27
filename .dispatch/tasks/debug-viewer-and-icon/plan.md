@@ -40,8 +40,8 @@ Source image: `~/Downloads/output.jpg` (the only recent image in Downloads — 4
 
 ## 3. Wrap-up
 
-- [ ] **One clean commit, no push.** Suggested subject: "Add classifier debug viewer + new app icon (monkey)". Update `STATE.md` with a 2026-04-26 update-log entry.
-- [ ] **Write summary to `.dispatch/tasks/debug-viewer-and-icon/output.md`.**
+- [x] **One clean commit, no push.** Suggested subject: "Add classifier debug viewer + new app icon (monkey)". Update `STATE.md` with a 2026-04-26 update-log entry. (Commit `11dac2e`.)
+- [x] **Write summary to `.dispatch/tasks/debug-viewer-and-icon/output.md`.**
 
 ---
 

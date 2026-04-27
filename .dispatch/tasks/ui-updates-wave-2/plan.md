@@ -1,16 +1,15 @@
 # UI updates wave 2 — Today tab rebuild + Library cleanup + UI rules
 
-- [ ] Rebuild `Sarvis/Screens/TodayView.swift`: drop the today-only filter, show ALL items from `TodoStore.shared.items` sorted by `createdAt` descending, grouped into day sections with headers ("Today", "Yesterday", weekday name for the last 7 days, "MMM d" for current year, "MMM d, yyyy" for older). Keep the existing `TodoRow` visuals. The header title should change from "Today" to **"Entries"**, with the meta line updated to something neutral (e.g., "Everything you've captured.").
-- [ ] Update `Sarvis/App/RootView.swift`: rename the tab label from "Today" → "Entries". Pick a fitting SF Symbol (suggestion: `tray` or `list.bullet.rectangle`). Update the `Tab` enum case if you rename it (or leave the case as `.today` internally — your call, just keep RootView consistent).
-- [ ] Edit `Sarvis/Screens/ProcessedView.swift`: remove the `.today` case from the `ProcessedSection` enum (label, symbol, body dispatch, the entire `todaySection` + `sensitiveSectionBlock` + `importanceGroupBlock` helpers if no longer used). Change the default `@State private var selectedSection: ProcessedSection = .today` to `.notes`.
-- [ ] Add a new top-level **"UI rules"** section to `STATE.md` (above the "Update log" section) documenting the conventions so future workers and instances follow the house style. See the Context block for what to include.
-- [ ] Append a `2026-04-26` entry to STATE.md's update log summarizing this wave's changes (Capture cleanup + Entries rebuild + Library trim + UI rules doc).
-- [ ] Build sanity-check: open the three modified Swift files and confirm there are no obvious unresolved references you introduced (orphan helpers, stale imports). Don't worry about pre-existing SourceKit "Cannot find X in scope" noise on InputView.swift — that's project-indexing flake the user already flagged.
-- [ ] Commit locally in two clean commits:
-  1. The Capture page rework already on disk in `Sarvis/Screens/InputView.swift` (tap-to-dismiss + remove "Clean up with Claude" + Process now in toolbar).
-  2. The Entries rebuild + Library trim + STATE.md updates.
-  Do NOT `git push` — the user only pushes on milestones.
-- [ ] Write summary of changes to `.dispatch/tasks/ui-updates-wave-2/output.md`.
+- [x] Rebuild `Sarvis/Screens/TodayView.swift`: drop the today-only filter, show ALL items from `TodoStore.shared.items` sorted by `createdAt` descending, grouped into day sections with headers ("Today", "Yesterday", weekday name for the last 7 days, "MMM d" for current year, "MMM d, yyyy" for older). Keep the existing `TodoRow` visuals. The header title should change from "Today" to **"Entries"**, with the meta line updated to something neutral (e.g., "Everything you've captured.").
+- [x] Update `Sarvis/App/RootView.swift`: rename the tab label from "Today" → "Entries". Changed icon to `tray`. Internal Tab enum case left as `.today`.
+- [x] Edit `Sarvis/Screens/ProcessedView.swift`: removed `.today` case from `ProcessedSection` enum (label, symbol, body dispatch, `todaySection` + `sensitiveSectionBlock` + `importanceGroupBlock` helpers). Default `selectedSection` changed to `.notes`.
+- [x] Add a new top-level **"UI rules"** section to `STATE.md` (above the "Update log" section).
+- [x] Append a `2026-04-26` entry to STATE.md's update log summarizing this wave's changes.
+- [x] Build sanity-check: reviewed all three modified Swift files — no new unresolved references introduced. Pre-existing SourceKit noise on InputView.swift not touched.
+- [x] Commit locally in two clean commits:
+  1. `c5fbf90` — Capture page rework (InputView.swift)
+  2. `8fad13e` — Entries rebuild + Library trim + STATE.md updates
+- [x] Write summary of changes to `.dispatch/tasks/ui-updates-wave-2/output.md`.
 
 **Context:**
 

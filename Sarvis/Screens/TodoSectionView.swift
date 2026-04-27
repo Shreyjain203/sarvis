@@ -24,7 +24,7 @@ import SwiftUI
 struct TodoSectionView: View {
     @EnvironmentObject private var todoStore: TodoStore
 
-    enum TileKey: Hashable { case today, tomorrow, nearFuture }
+    enum TileKey: Hashable { case today, tomorrow, nearFuture, everythingElse }
 
     @State private var expanded: Set<TileKey> = [.today]
     @State private var editing: TodoItem? = nil
@@ -33,38 +33,34 @@ struct TodoSectionView: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             header
 
-            // Today — large tile
-            tileContainer(
+            tileBox(
                 key: .today,
                 title: "Today",
                 subtitle: TodoSectionView.formattedToday(),
                 icon: "sun.max",
-                count: todayItems.count,
-                size: .large,
                 items: todayItems
             )
-
-            // Tomorrow + Near Future side-by-side
-            HStack(spacing: Theme.Spacing.sm) {
-                tileContainer(
-                    key: .tomorrow,
-                    title: "Tomorrow",
-                    subtitle: TodoSectionView.formattedTomorrow(),
-                    icon: "moon.stars",
-                    count: tomorrowItems.count,
-                    size: .small,
-                    items: tomorrowItems
-                )
-                tileContainer(
-                    key: .nearFuture,
-                    title: "Near Future",
-                    subtitle: "Next 10 days",
-                    icon: "calendar",
-                    count: nearFutureItems.count,
-                    size: .small,
-                    items: nearFutureItems
-                )
-            }
+            tileBox(
+                key: .tomorrow,
+                title: "Tomorrow",
+                subtitle: TodoSectionView.formattedTomorrow(),
+                icon: "moon.stars",
+                items: tomorrowItems
+            )
+            tileBox(
+                key: .nearFuture,
+                title: "Near Future",
+                subtitle: "Next 10 days",
+                icon: "calendar",
+                items: nearFutureItems
+            )
+            tileBox(
+                key: .everythingElse,
+                title: "Everything Else",
+                subtitle: "Beyond 10 days",
+                icon: "tray",
+                items: everythingElseItems
+            )
         }
         .sheet(item: $editing) { item in
             TodoEditSheet(item: item) { updated in
@@ -105,51 +101,50 @@ struct TodoSectionView: View {
         }
     }
 
-    // MARK: - Tile container (tile + expanded list)
-
-    private enum TileSize {
-        case large, small
-        var height: CGFloat { self == .large ? 220 : 140 }
-    }
+    // MARK: - Tile box (header + expanded list, all inside one card)
 
     @ViewBuilder
-    private func tileContainer(
+    private func tileBox(
         key: TileKey,
         title: String,
         subtitle: String,
         icon: String,
-        count: Int,
-        size: TileSize,
         items: [TodoItem]
     ) -> some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            tileFace(
+        VStack(alignment: .leading, spacing: 0) {
+            tileHeader(
                 key: key,
                 title: title,
                 subtitle: subtitle,
                 icon: icon,
-                count: count,
-                size: size
+                count: items.count
             )
 
             if expanded.contains(key) {
+                Divider()
+                    .background(Theme.Palette.hairline)
+                    .padding(.horizontal, Theme.Spacing.md)
+
                 expandedList(items: items)
+                    .padding(.horizontal, Theme.Spacing.sm)
+                    .padding(.bottom, Theme.Spacing.sm)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .themedCard(padding: 0, cornerRadius: Theme.Radius.card)
         .animation(.easeInOut(duration: 0.22), value: expanded)
     }
 
-    // MARK: - Tile face button
+    // MARK: - Tile header button
 
     @ViewBuilder
-    private func tileFace(
+    private func tileHeader(
         key: TileKey,
         title: String,
         subtitle: String,
         icon: String,
-        count: Int,
-        size: TileSize
+        count: Int
     ) -> some View {
         Button {
             Haptics.soft()
@@ -158,53 +153,32 @@ struct TodoSectionView: View {
                 else { expanded.insert(key) }
             }
         } label: {
-            ZStack(alignment: .topTrailing) {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    HStack(spacing: 6) {
-                        Image(systemName: icon)
-                            .font(.system(size: size == .large ? 18 : 14, weight: .light))
-                            .foregroundStyle(Theme.Palette.muted)
-                        Text(title)
-                            .font(size == .large
-                                  ? Theme.Typography.sectionTitle()
-                                  : .system(.headline, design: .serif).weight(.regular))
-                            .foregroundStyle(Theme.Palette.ink)
-                    }
+            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .light))
+                    .foregroundStyle(Theme.Palette.muted)
+                    .frame(width: 22)
 
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(.headline, design: .serif).weight(.regular))
+                        .foregroundStyle(Theme.Palette.ink)
                     Text(subtitle)
                         .font(Theme.Typography.meta())
                         .foregroundStyle(Theme.Palette.muted)
-
-                    Spacer(minLength: 0)
-
-                    HStack(alignment: .lastTextBaseline, spacing: 6) {
-                        Text("\(count)")
-                            .font(size == .large
-                                  ? Theme.Typography.display()
-                                  : .system(size: 28, weight: .regular, design: .serif))
-                            .foregroundStyle(Theme.Palette.ink)
-                        Text(count == 1 ? "task" : "tasks")
-                            .font(Theme.Typography.meta())
-                            .foregroundStyle(Theme.Palette.muted)
-                    }
-
-                    HStack(spacing: 4) {
-                        Image(systemName: expanded.contains(key)
-                              ? "chevron.up"
-                              : "chevron.down")
-                            .font(.system(size: 10, weight: .medium))
-                        Text(expanded.contains(key) ? "Hide" : "Show")
-                            .font(Theme.Typography.meta())
-                    }
-                    .foregroundStyle(Theme.Palette.muted)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: size.height)
 
-                // Count badge (top-right)
+                Spacer(minLength: 0)
+
                 countPill(count)
+
+                Image(systemName: expanded.contains(key) ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.Palette.muted)
             }
-            .themedCard(padding: Theme.Spacing.md, cornerRadius: Theme.Radius.card)
+            .frame(maxWidth: .infinity)
+            .padding(Theme.Spacing.md)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -302,6 +276,21 @@ struct TodoSectionView: View {
             .filter { item in
                 guard !item.isDone, let due = item.dueAt else { return false }
                 return due > endOfTomorrow && due <= endOfTenAhead
+            }
+            .sorted(by: TodoSectionView.taskSort)
+    }
+
+    private var everythingElseItems: [TodoItem] {
+        let cal = Calendar.current
+        let now = Date()
+        guard let tenAhead = cal.date(byAdding: .day, value: 10, to: now),
+              let endOfTenAhead = cal.date(bySettingHour: 23, minute: 59, second: 59, of: tenAhead)
+        else { return [] }
+        return todoStore.items(in: .task)
+            .filter { item in
+                guard !item.isDone else { return false }
+                guard let due = item.dueAt else { return true }
+                return due > endOfTenAhead
             }
             .sorted(by: TodoSectionView.taskSort)
     }
