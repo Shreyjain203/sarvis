@@ -8,7 +8,6 @@ build/
 
 # XcodeGen output (regenerate via setup.sh / xcodegen)
 Sarvis.xcodeproj/
-ReminderApp.xcodeproj/
 
 # macOS
 .DS_Store

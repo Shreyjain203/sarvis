@@ -4,10 +4,16 @@ import UserNotifications
 final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationService()
 
+    // Legacy category used for actions (done / snooze)
     static let categoryID = "TODO_REMINDER"
     static let doneActionID = "ACTION_DONE"
     static let snoozeActionID = "ACTION_SNOOZE"
     static let snoozeMinutes = 10
+
+    // Content-extension category identifiers (Phase 2.3)
+    static let categoryTaskReminder   = "task.reminder"
+    static let categoryNewsBriefing   = "news.briefing"
+    static let categoryQuoteMorning   = "quote.morning"
 
     @discardableResult
     func requestAuthorization() async throws -> Bool {
@@ -26,13 +32,40 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             title: "Snooze \(Self.snoozeMinutes) min",
             options: []
         )
-        let category = UNNotificationCategory(
+        // Legacy category with action buttons
+        let todoCategory = UNNotificationCategory(
             identifier: Self.categoryID,
             actions: [done, snooze],
             intentIdentifiers: [],
             options: []
         )
-        UNUserNotificationCenter.current().setNotificationCategories([category])
+
+        // Phase 2.3 — content-extension categories (no action buttons; UI handled by extension)
+        let taskReminderCategory = UNNotificationCategory(
+            identifier: Self.categoryTaskReminder,
+            actions: [done, snooze],
+            intentIdentifiers: [],
+            options: []
+        )
+        let newsBriefingCategory = UNNotificationCategory(
+            identifier: Self.categoryNewsBriefing,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+        let quoteCategory = UNNotificationCategory(
+            identifier: Self.categoryQuoteMorning,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        UNUserNotificationCenter.current().setNotificationCategories([
+            todoCategory,
+            taskReminderCategory,
+            newsBriefingCategory,
+            quoteCategory
+        ])
     }
 
     @discardableResult
@@ -41,8 +74,14 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         content.title = todo.isSensitive ? "Reminder (sensitive)" : "Reminder"
         content.body = todo.text
         content.sound = .default
-        content.categoryIdentifier = Self.categoryID
-        content.userInfo = ["todoID": todo.id.uuidString]
+        // Use the content-extension category so the custom UI renders on expand
+        content.categoryIdentifier = Self.categoryTaskReminder
+        let isoFormatter = ISO8601DateFormatter()
+        content.userInfo = [
+            "todoID":     todo.id.uuidString,
+            "importance": todo.importance.notifString,
+            "dueAt":      isoFormatter.string(from: date)
+        ]
 
         let interval = max(1, date.timeIntervalSinceNow)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
@@ -56,13 +95,21 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     /// Lightweight overload for scheduling a notification from raw title/body/date
     /// without needing a full `TodoItem`. Used by `ClassifierService` to fire
     /// notifications inferred from LLM output.
+    /// Schedule a raw task reminder without a full TodoItem.
+    /// Defaults to `task.reminder` category (custom UI on expand).
     @discardableResult
-    func schedule(title: String, body: String, at date: Date) async throws -> String {
+    func schedule(title: String, body: String, at date: Date,
+                  importance: String = "med") async throws -> String {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
-        content.categoryIdentifier = Self.categoryID
+        content.categoryIdentifier = Self.categoryTaskReminder
+        let isoFormatter = ISO8601DateFormatter()
+        content.userInfo = [
+            "importance": importance,
+            "dueAt":      isoFormatter.string(from: date)
+        ]
 
         let interval = max(1, date.timeIntervalSinceNow)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)

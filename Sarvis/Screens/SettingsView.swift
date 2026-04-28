@@ -9,6 +9,10 @@ struct SettingsView: View {
     @State private var apiKey: String = ""
     @State private var newsTopic: String = ""
 
+    @StateObject private var googleAuth = GoogleAuth.shared
+    @State private var isAuthorizing = false
+    @State private var gmailError: String? = nil
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -18,6 +22,7 @@ struct SettingsView: View {
                         header
                         apiKeyCard
                         newsTopicCard
+                        gmailCard
                         modelCard
                         actionsRow
                         debugCard
@@ -121,6 +126,106 @@ struct SettingsView: View {
                     .foregroundStyle(Theme.Palette.muted)
             }
             .themedCard(padding: Theme.Spacing.md, cornerRadius: Theme.Radius.card)
+        }
+    }
+
+    private var gmailCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            sectionLabel("Gmail")
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                if googleAuth.isConnected {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        Image(systemName: "checkmark.seal")
+                            .font(.system(size: 14, weight: .light))
+                            .foregroundStyle(Theme.Palette.muted)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Connected")
+                                .font(Theme.Typography.bodyEmphasis())
+                                .foregroundStyle(Theme.Palette.ink)
+                            if let email = googleAuth.email {
+                                Text(email)
+                                    .font(Theme.Typography.meta())
+                                    .foregroundStyle(Theme.Palette.muted)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 6)
+
+                    Divider().background(Theme.Palette.hairline)
+
+                    Button {
+                        Haptics.light()
+                        googleAuth.disconnect()
+                        EmailCache().clearAll()
+                        ToastCenter.shared.show("Gmail disconnected")
+                    } label: {
+                        Text("Disconnect")
+                            .font(Theme.Typography.body())
+                            .foregroundStyle(.red.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, 6)
+                } else {
+                    Button {
+                        connectGmail()
+                    } label: {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "envelope")
+                                .font(.system(size: 14, weight: .light))
+                                .foregroundStyle(Theme.Palette.muted)
+                            Text(isAuthorizing ? "Connecting…" : "Connect Gmail")
+                                .font(Theme.Typography.bodyEmphasis())
+                                .foregroundStyle(Theme.Palette.ink)
+                            Spacer(minLength: 0)
+                            if isAuthorizing {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(Theme.Palette.muted)
+                            }
+                        }
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isAuthorizing)
+
+                    if let err = gmailError {
+                        Divider().background(Theme.Palette.hairline)
+                        Text(err)
+                            .font(Theme.Typography.meta())
+                            .foregroundStyle(Theme.Palette.sensitiveAccent)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 4)
+                    }
+                }
+
+                Divider().background(Theme.Palette.hairline)
+                Text("Read-only access (gmail.readonly). Subjects, sender, and 200-char snippets only — no full bodies. Refresh token in Keychain.")
+                    .font(Theme.Typography.meta())
+                    .foregroundStyle(Theme.Palette.muted)
+            }
+            .themedCard(padding: Theme.Spacing.md, cornerRadius: Theme.Radius.card)
+        }
+    }
+
+    private func connectGmail() {
+        gmailError = nil
+        isAuthorizing = true
+        Task { @MainActor in
+            do {
+                try await googleAuth.authorize()
+                Haptics.success()
+                ToastCenter.shared.show("Gmail connected")
+            } catch {
+                gmailError = error.localizedDescription
+            }
+            isAuthorizing = false
         }
     }
 

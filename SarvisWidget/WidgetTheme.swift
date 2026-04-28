@@ -10,6 +10,9 @@ enum WidgetTheme {
     }
 
     enum Radius {
+        /// Large rounded-rect for the faux text field.
+        static let textField: CGFloat = 16
+        /// Pill (fully rounded) for the Submit button.
         static let pill: CGFloat = 999
     }
 
@@ -22,7 +25,10 @@ enum WidgetTheme {
     /// Hairline separator / border.
     static let hairline = Color.primary.opacity(0.08)
 
-    /// Background for the faux input pill.
+    /// Warm canvas background (mirrors Theme.Palette warm tones).
+    static let canvasBackground = Color(uiColor: .secondarySystemBackground)
+
+    /// Background for the faux input field.
     static let inputBackground = Color(uiColor: .tertiarySystemBackground)
 
     /// Filled pill button background.

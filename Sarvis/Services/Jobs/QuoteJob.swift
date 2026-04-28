@@ -50,6 +50,14 @@ enum QuoteJob {
             content.body = "Keep going."
         }
         content.sound = .default
+        // Phase 2.3: use the content-extension category for the custom quote card view.
+        content.categoryIdentifier = NotificationService.categoryQuoteMorning
+        if let q = quote {
+            content.userInfo = [
+                "quote":       q.text,
+                "attribution": q.author.map { "— \($0)" } ?? ""
+            ]
+        }
 
         var components = DateComponents()
         components.hour = hour

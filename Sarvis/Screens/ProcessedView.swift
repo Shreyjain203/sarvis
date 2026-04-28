@@ -11,6 +11,7 @@ enum ProcessedSection: String, CaseIterable, Identifiable {
     case suggestions = "suggestions"
     case quotes     = "quotes"
     case news       = "news"
+    case email      = "email"
     case profile    = "profile"
 
     var id: String { rawValue }
@@ -25,6 +26,7 @@ enum ProcessedSection: String, CaseIterable, Identifiable {
         case .suggestions: return "Suggestions"
         case .quotes:      return "Quotes"
         case .news:        return "News"
+        case .email:       return "Email"
         case .profile:     return "Profile"
         }
     }
@@ -39,6 +41,7 @@ enum ProcessedSection: String, CaseIterable, Identifiable {
         case .suggestions: return "sparkles"
         case .quotes:      return "quote.bubble"
         case .news:        return "newspaper"
+        case .email:       return "envelope"
         case .profile:     return "person.circle"
         }
     }
@@ -60,6 +63,12 @@ struct ProcessedView: View {
 
     // Quotes: synchronous load (no async needed, file-backed)
     @State private var quotes: [Quote] = []
+
+    // Email: read from DailyArtifactStore + allow refresh
+    @State private var emailDigest: EmailDigest? = nil
+    @State private var isRefreshingEmail = false
+    @State private var emailError: String? = nil
+    @State private var expandedEmailIDs: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -88,6 +97,7 @@ struct ProcessedView: View {
         .onAppear {
             loadQuotes()
             loadNews()
+            loadEmail()
         }
     }
 
@@ -154,6 +164,7 @@ struct ProcessedView: View {
         case .suggestions: suggestionsSection
         case .quotes:      quotesSection
         case .news:        newsSection
+        case .email:       emailSection
         case .profile:     profileSection
         }
     }
@@ -351,6 +362,153 @@ struct ProcessedView: View {
             Spacer(minLength: Theme.Spacing.xxl)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Email
+
+    private var emailSection: some View {
+        Group {
+            sectionHeader("Email", symbol: "envelope")
+            if !GoogleAuth.shared.isConnected {
+                emailNotConnectedState
+            } else if isRefreshingEmail {
+                ProgressView("Fetching email…")
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Theme.Spacing.xl)
+                    .foregroundStyle(Theme.Palette.muted)
+            } else if let digest = emailDigest, !(digest.important.isEmpty && digest.actions.isEmpty && digest.fyi.isEmpty) {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    if !digest.important.isEmpty {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                            subSectionLabel("Important")
+                            VStack(spacing: Theme.Spacing.sm) {
+                                ForEach(digest.important) { item in
+                                    EmailItemRow(
+                                        item: item,
+                                        palette: .important,
+                                        isExpanded: expandedEmailIDs.contains(item.id),
+                                        onTap: { toggleEmailExpansion(item.id) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if !digest.actions.isEmpty {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                            subSectionLabel("Actions")
+                            VStack(spacing: Theme.Spacing.sm) {
+                                ForEach(digest.actions) { action in
+                                    EmailActionRow(action: action)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                emailEmptyState
+            }
+        }
+    }
+
+    private var emailNotConnectedState: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Spacer(minLength: Theme.Spacing.xxl)
+            Image(systemName: "envelope")
+                .font(.system(size: 32, weight: .ultraLight))
+                .foregroundStyle(Theme.Palette.muted.opacity(0.5))
+
+            Text("Gmail not connected")
+                .font(Theme.Typography.emptyState())
+                .foregroundStyle(Theme.Palette.inkSoft)
+
+            Text("Connect Gmail in Settings to see today's important mail and extracted actions.")
+                .font(Theme.Typography.meta())
+                .foregroundStyle(Theme.Palette.muted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Theme.Spacing.lg)
+            Spacer(minLength: Theme.Spacing.xxl)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var emailEmptyState: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Spacer(minLength: Theme.Spacing.xxl)
+            Image(systemName: "envelope")
+                .font(.system(size: 32, weight: .ultraLight))
+                .foregroundStyle(Theme.Palette.muted.opacity(0.5))
+
+            Text("No email digest yet")
+                .font(Theme.Typography.emptyState())
+                .foregroundStyle(Theme.Palette.inkSoft)
+
+            if let err = emailError {
+                Text(err)
+                    .font(Theme.Typography.meta())
+                    .foregroundStyle(Theme.Palette.sensitiveAccent)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Tap below to fetch and classify recent mail.")
+                    .font(Theme.Typography.meta())
+                    .foregroundStyle(Theme.Palette.muted)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button {
+                refreshEmail()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .medium))
+                    Text("Refresh email")
+                        .font(Theme.Typography.chip())
+                }
+                .foregroundStyle(Theme.Palette.ink)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm)
+                .background {
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                                .strokeBorder(Theme.Palette.hairline, lineWidth: 0.5)
+                        )
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: Theme.Spacing.xxl)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func toggleEmailExpansion(_ id: String) {
+        Haptics.soft()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            if expandedEmailIDs.contains(id) {
+                expandedEmailIDs.remove(id)
+            } else {
+                expandedEmailIDs.insert(id)
+            }
+        }
+    }
+
+    private func loadEmail() {
+        emailDigest = EmailDigestService.shared.todaysDigest()
+    }
+
+    private func refreshEmail() {
+        isRefreshingEmail = true
+        emailError = nil
+        Task { @MainActor in
+            do {
+                emailDigest = try await EmailDigestService.shared.refreshToday()
+            } catch {
+                emailError = error.localizedDescription
+            }
+            isRefreshingEmail = false
+        }
     }
 
     // MARK: - Profile

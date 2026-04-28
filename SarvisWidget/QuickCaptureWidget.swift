@@ -9,7 +9,7 @@ struct QuickCaptureWidget: Widget {
             QuickCaptureView(entry: entry)
         }
         .configurationDisplayName("Quick Capture")
-        .description("Jot a note in one tap.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .description("Tap to open Sarvis and capture a thought.")
+        .supportedFamilies([.systemLarge])
     }
 }

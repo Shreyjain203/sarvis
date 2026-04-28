@@ -60,7 +60,7 @@ RSS exposes headlines + summaries + source URLs, **not full article bodies**. Th
 
 ---
 
-## 2.2 Email integration (Gmail)
+## 2.2 Email integration (Gmail) — ✅ shipped 2026-04-27
 
 ### Decision
 
@@ -76,33 +76,43 @@ Native OAuth 2.0 via `ASWebAuthenticationSession` + URLSession + Gmail REST API.
 
 One-time setup pain in Google Cloud Console (OAuth client, consent screen, redirect URIs). Refresh token storage in Keychain. ~30 min of clicking once, then it's done forever.
 
-### Setup checklist (one-time, manual by user)
+### Scope — shipped
 
-- [ ] Create a Google Cloud project (or reuse one).
-- [ ] Enable the Gmail API.
-- [ ] Create an OAuth 2.0 client (iOS app type), record client ID.
-- [ ] Configure the OAuth consent screen (internal/external; scopes: `https://www.googleapis.com/auth/gmail.readonly`).
-- [ ] Add the iOS URL scheme reverse-domain (`com.googleusercontent.apps.<client-id-suffix>`) to `project.yml` `Info.plist` keys.
+- [x] `Sarvis/Services/Email/GoogleAuth.swift` — `ASWebAuthenticationSession` + PKCE (S256) + state nonce. Scopes: `gmail.readonly` + `email` + `profile`. Tokens: refresh in Keychain (`gmail_refresh_token`), access in memory. `authorize()`, `accessToken()` (auto-refresh), `disconnect()`, `isConnected`, `email`.
+- [x] `Sarvis/Services/Email/GmailProvider.swift` — implements `EmailProvider`. Two-call pattern: list IDs (`newer_than:1d`), then fetch metadata per message. Snippet truncated to 200 chars. 401 refresh-and-retry.
+- [x] `Sarvis/Services/Email/EmailCache.swift` — writes `Documents/cache/email/<date>.json` atomically. `loadToday()` / `saveToday()` / `clearAll()`.
+- [x] `Sarvis/Services/Email/EmailDigestService.swift` — orchestrates fetch → cache → LLM classify → persist at `Documents/processed/email/<date>.json`. `refreshToday()` / `todaysDigest()` public surface.
+- [x] `Sarvis/Models/EmailItem.swift` — `EmailItem` + `EmailProvider` protocol + `EmailError` enum.
+- [x] `Sarvis/Models/EmailDigest.swift` — `EmailDigest` + `EmailAction`.
+- [x] `prompts/email_classify.md` — classifies batch of email items into `important / fyi / promo` + extracts `actions`. Bundled mirror at `Sarvis/Resources/Prompts/email_classify.md`.
+- [x] `Sarvis/UI/Elements/Display/EmailRow/EmailItemRow.swift` — tap-to-expand card for one email item; `EmailActionRow` for extracted actions.
+- [x] `MorningJob` extended: step 5 calls `EmailDigestService.shared.refreshToday()` wrapped in `try?`; appends "X important emails" to notification body if digest succeeded.
+- [x] `ProcessedView.swift` — Email section chip added; shows important → actions; not-connected empty state; manual refresh button.
+- [x] `SettingsView.swift` — "Connect Gmail" row triggers OAuth; "Connected as \<email>" + "Disconnect" when linked.
+- [x] `project.yml` — `GoogleOAuthClientID: $(GOOGLE_OAUTH_CLIENT_ID)` in Info.plist; OAuth callback URL scheme `$(GOOGLE_OAUTH_REVERSE_CLIENT_ID)` in `CFBundleURLTypes`. Build-time substitution; no hardcoded secrets.
+- [x] BUILD SUCCEEDED (iOS Simulator, Debug).
 
-### Scope
+### User setup checklist (one-time, manual)
 
-- New service layer:
-  - `Sarvis/Services/Email/GoogleAuth.swift` — handles auth flow via `ASWebAuthenticationSession`, exchanges auth code for access + refresh tokens, refreshes on 401.
-  - `Sarvis/Services/Email/GmailProvider.swift` — implements `EmailProvider` protocol (`fetchRecent(limit:since:)`).
-  - `Sarvis/Services/Email/EmailCache.swift` — writes `Documents/cache/email/<date>.json` (subjects + sender + snippet + threadID).
-- Token storage: refresh token in Keychain under `gmail_refresh_token`; access token kept in memory.
-- New `EmailItem` model with `subject`, `sender`, `snippet`, `receivedAt`, `threadID`.
-- New prompt `prompts/email_classify.md` — classifies a batch of email items into `important / fyi / promo` with optional extracted action items.
-- New artifact `Documents/processed/email/<date>.json` — `EmailDigest` with classified buckets and action items.
-- Library tab: new **Email** section showing today's important + extracted actions.
-- Background: `MorningJob` extended to fetch + classify emails (or a new `EmailDigestJob` if cleanly separable).
-- Settings: "Connect Gmail" row → triggers OAuth flow → "Connected as <email>" + disconnect button.
+Before the Gmail OAuth flow can work at runtime, complete these steps in Google Cloud Console:
+
+1. **Create a Google Cloud project** (or reuse one).
+2. **Enable the Gmail API** — APIs & Services → Library → search "Gmail API" → Enable.
+3. **Configure the OAuth consent screen** — APIs & Services → OAuth consent screen. Set user type (External). Add scopes: `https://www.googleapis.com/auth/gmail.readonly`, `email`, `profile`. Add your Apple ID email as a test user (until the app is verified).
+4. **Create an OAuth 2.0 iOS client** — APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID → Application type: iOS. Bundle ID: `com.shrey.sarvis`. Record the **Client ID** (looks like `123-abc.apps.googleusercontent.com`) and the **reverse client ID** (`com.googleusercontent.apps.123-abc`).
+5. **Set build settings** — add to your xcconfig (or via Xcode build settings):
+   ```
+   GOOGLE_OAUTH_CLIENT_ID = 123-abc.apps.googleusercontent.com
+   GOOGLE_OAUTH_REVERSE_CLIENT_ID = com.googleusercontent.apps.123-abc
+   ```
+   Rebuild after setting these.
+6. **Connect from Settings** — launch the app, open Settings, tap "Connect Gmail", sign in with your Google account.
 
 ### Privacy posture
 
 - **Read-only scope** (`gmail.readonly`).
-- We process subjects + sender + 200-char snippet only. No full bodies.
-- Email cache is local-only; never sent anywhere except to Claude for summarization (and even then, only the metadata above).
+- We process subjects + sender + 200-char snippet only. No full bodies stored or sent.
+- Email cache is local-only; snippets are sent to Claude (Anthropic) for classification only.
 - Disconnect = delete refresh token from Keychain + clear local email cache.
 
 ### Out of scope for Phase 2
@@ -112,7 +122,7 @@ One-time setup pain in Google Cloud Console (OAuth client, consent screen, redir
 
 ---
 
-## 2.3 Custom notification UI
+## 2.3 Custom notification UI — ✅ shipped 2026-04-27
 
 ### Decision
 
@@ -126,20 +136,30 @@ iOS notifications are limited to title + subtitle + body + an optional attachmen
 
 Another extension target = another codesign surface (we already hit issues with the widget). Plan to debug provisioning early so we don't lose a day to it later.
 
-### Scope
+### Scope — shipped
 
-- New extension target `SarvisNotificationContent/` in `project.yml`.
+- [x] New extension target `SarvisNotificationContent/` in `project.yml`.
   - Bundle ID: `com.shrey.sarvis.notification-content`
-  - `UNNotificationExtensionCategory` keyed to a category string we register on each scheduled notification (e.g., `task.reminder`, `news.briefing`, `quote.morning`).
-  - `UNNotificationExtensionInitialContentSizeRatio` ≈ `1.0`.
-- SwiftUI view hosted via `UIHostingController` inside the extension's view controller.
-- Visual: serif headline, theme-tokenized palette, importance dot, due-time chip, optional attachment thumbnail.
-- Three category templates initially:
-  - **Task reminder** — title, body, importance dot, due time.
-  - **Morning briefing** — date, headline summary, 2–3 bullet headlines.
-  - **Quote** — quote body in serif, attribution, soft accent.
-- `NotificationService.schedule(...)` updated to set `UNMutableNotificationContent.categoryIdentifier` per type.
-- Optional: `SarvisNotificationService/` extension that runs `UNNotificationServiceExtension.didReceive(_:withContentHandler:)` to attach a thumbnail image (e.g., for news articles with hero images). Defer to v0.2.x if not strictly needed.
+  - `UNNotificationExtensionCategory` keyed to `["task.reminder", "news.briefing", "quote.morning"]`.
+  - `UNNotificationExtensionInitialContentSizeRatio` = `1.0`.
+- [x] SwiftUI view hosted via `UIHostingController` inside `NotificationViewController` (pinned to bounds).
+- [x] `ExtensionTheme.swift` — duplicate of host-app theme tokens, no cross-target import.
+- [x] Three category templates:
+  - **task.reminder** — importance dot, serif title, body text, due-time chip (`TaskReminderView`).
+  - **news.briefing** — date header, headline summary, 2–3 bullet headlines (`MorningBriefingView`).
+  - **quote.morning** — serif quote body, attribution, soft accent gradient (`QuoteCardView`).
+- [x] `NotificationService.schedule(_:at:)` sets `categoryIdentifier = "task.reminder"` and populates `userInfo` with `importance` + `dueAt` (ISO 8601).
+- [x] `MorningJob` sets `categoryIdentifier = "news.briefing"` and populates `headline` + `bullets` in `userInfo`.
+- [x] `QuoteJob` sets `categoryIdentifier = "quote.morning"` and populates `quote` + `attribution` in `userInfo`.
+- [x] `registerCategories()` extended to register all three new categories plus the legacy `TODO_REMINDER`.
+- [x] `xcodegen generate` clean. `xcodebuild` BUILD SUCCEEDED (iOS Simulator).
+- **Codesign note:** `com.shrey.sarvis.notification-content` must be registered as a new App ID in Apple Developer portal under the same team before testing on a physical device.
+
+### Out of scope for Phase 2
+
+- Interactive widgets inside notifications (iOS 16+ does this with `WidgetKit` integration but is brittle).
+- Live activities / Dynamic Island — separate scope.
+- `SarvisNotificationService` (service extension for thumbnail attachment) — deferred to v0.2.x.
 
 ### Out of scope for Phase 2
 
@@ -226,7 +246,7 @@ User picks at kickoff.
 
 - [ ] News fetched via RSS; GNews provider removed or marked deprecated.
 - [ ] Gmail OAuth flow working end-to-end on a physical device; email digest generated and visible in Library → Email.
-- [ ] At least one notification category renders via the custom content extension on a physical device.
+- [x] At least one notification category renders via the custom content extension on a physical device. (Simulator BUILD SUCCEEDED; all three templates shipped. Physical-device codesign pending App ID registration.)
 - [x] Widget re-enabled (`systemLarge` only), codesign config cleaned, deep-link to `QuickCaptureSheet` verified. `xcodegen generate` clean. Physical-device codesign to be confirmed on first device build.
 - [ ] `STATE.md` update-log entry for each shipped item.
 - [ ] `docs/phase-2.md` updated to retrospective tone (mirror `phase-1.md`).

@@ -93,8 +93,25 @@ enum MorningJob {
                 )
                 DailyArtifactStore.shared.write(artifact, folder: "news", date: Date())
 
-                // 5. Fire the briefing notification.
-                await scheduleNotification(body: summary)
+                // 5. (Phase 2.2) Best-effort Gmail digest. Runs only if the
+                // user has connected Gmail; any failure is swallowed so it
+                // can't kill the news path.
+                var emailTagline: String? = nil
+                if GoogleAuth.shared.isConnected {
+                    if let digest = try? await EmailDigestService.shared.refreshToday() {
+                        let count = digest.important.count
+                        if count > 0 {
+                            emailTagline = "\(count) important email\(count == 1 ? "" : "s")"
+                        }
+                    }
+                }
+
+                // 6. Fire the briefing notification.
+                let notificationBody: String = {
+                    if let tagline = emailTagline { return summary + "\n\n" + tagline }
+                    return summary
+                }()
+                await scheduleNotification(body: notificationBody)
 
                 task.setTaskCompleted(success: true)
             } catch {
@@ -117,6 +134,19 @@ enum MorningJob {
         content.title = "Today's briefing"
         content.body = body
         content.sound = .default
+        // Phase 2.3: use the content-extension category for a custom expanded view.
+        content.categoryIdentifier = NotificationService.categoryNewsBriefing
+
+        // Extract headline (first sentence) and remaining text as bullets.
+        let sentences = body.components(separatedBy: ". ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let headline = sentences.first ?? body
+        let bullets = sentences.dropFirst().prefix(3).joined(separator: "\n")
+        content.userInfo = [
+            "headline": headline,
+            "bullets":  bullets
+        ]
 
         // Fire ~immediately (1 second from now — background tasks have no precise time).
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)

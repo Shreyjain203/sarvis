@@ -2,470 +2,116 @@
 
 **Your personal AI OS, on iOS.**
 
-Sarvis takes messy, unstructured input from your life — notes, email subjects, location history, screen usage, weather, news — feeds it all into Claude, and produces a structured behavioral picture of your day. It generates todos, surfaces insights, sends smart notifications, and nudges you toward better decisions. Not a notes app. Not a reminder app. A personal decision engine that observes, structures, and acts.
+Sarvis takes messy, unstructured input — anything you'd jot in Notes or mutter to yourself — and turns it into structured behavior intelligence: todos, notes, shopping, diary, news summaries, motivational nudges, and an inferred profile of you. You capture freely; an LLM classifies, normalizes, and surfaces what matters via a Library tab and notifications.
 
----
+> **Status:** Phase 1 complete (`v0.1.0`, 2026-04-27). Phase 2 (premium upgrade) in planning.
 
-## Table of Contents
-
-1. [Core Idea](#core-idea)
-2. [Architecture](#architecture)
-3. [Dynamic UI](#dynamic-ui)
-4. [File & Folder Structure](#file--folder-structure)
-5. [Storage Layout](#storage-layout)
-6. [Tech Stack](#tech-stack)
-7. [MVP Phases](#mvp-phases)
-8. [Setup & Build](#setup--build)
-9. [Reality Checks](#reality-checks)
-10. [Roadmap](#roadmap)
-
----
-
-## Core Idea
-
-The engine is simple:
+## Core idea
 
 ```
-Messy input + external data → Claude → structured JSON
+Messy input → fetch external context (offline) → Claude → structured JSON → render
 ```
 
-Everything in Sarvis is downstream of that pipeline. You write a raw note. The app fetches weather, news, email subjects, screen time stats, and location context. All of it gets bundled into a single Claude prompt. Claude returns structured JSON. That JSON drives todos, notifications, summaries, and nudges.
+The LLM is a **transformer**, not a fetcher. We pull context (news, email subjects, etc.) ourselves, package it cleanly, and only then call Claude to summarize, classify, or normalize. Raw input is never discarded — every capture lands in `Documents/raw/<uuid>.json` and is always re-processable.
 
-Raw input is never discarded — it lives on disk and is always re-processable. The LLM is a formatter and thinker, not a data fetcher. Fetch first, think second.
+## Quickstart
 
-**Example LLM output:**
+Requirements: Xcode 17, iOS 17+ device or simulator, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), an Anthropic API key.
 
-```json
-{
-  "todos": [
-    { "task": "Pay rent", "priority": "high" },
-    { "task": "Reply to manager email", "priority": "high" }
-  ],
-  "news_summary": "AI regulations tightening globally.",
-  "weather_alerts": ["Heavy rain expected this afternoon"],
-  "insights": [
-    "You spent 2.5h on Instagram today",
-    "You have 2 important unread emails"
-  ],
-  "nudges": [
-    "Take a break from social media",
-    "Check your bank statement"
-  ],
-  "mood": "low"
-}
+```bash
+# regenerate the Xcode project from project.yml
+xcodegen generate
+
+# open + run
+open Sarvis.xcodeproj
 ```
 
----
+On first launch, paste your **Anthropic API key** in Settings (stored in Keychain — never in source or UserDefaults). Optional: paste a **GNews API key** if you want the news fetch path active during Phase 1; Phase 2 replaces this with RSS.
 
-## Architecture
+For prompt changes, edit files in `/prompts/` and sync them into the bundle:
 
-### 1. Input Layer
-
-Free-form text. No required fields. Write whatever's in your head.
-
-Stored as:
-
-```
-/data/raw/YYYY-MM-DD.txt
+```bash
+./tools/sync-prompts.sh
 ```
 
-### 2. Data Sources
+## Documentation
 
-| Source | API |
-|---|---|
-| News | NewsAPI or GNews |
-| Weather | OpenWeatherMap or WeatherAPI |
-| Location | iOS CoreLocation (no external API) |
-| Email | Gmail API (OAuth) or IMAP |
-| Screen time | FamilyControls + DeviceActivity |
+- [`STATE.md`](./STATE.md) — **read this first if a conversation drops.** Living snapshot of what's built, the architecture map, public API contracts, UI rules, dispatched workers, and a dated update log.
+- [`docs/phase-1.md`](./docs/phase-1.md) — Phase 1 plan + what shipped. Frozen at the `v0.1.0` tag.
+- [`docs/phase-2.md`](./docs/phase-2.md) — Phase 2 plan: Gmail integration, durable RSS news source, custom notification UI, widget re-enable.
+- [`prompts/`](./prompts/) — LLM prompts (source of truth). Bundled mirror lives at `Sarvis/Resources/Prompts/`.
+- [`.dispatch/tasks/<id>/`](./.dispatch/tasks/) — historical worker plan + output records.
 
-### 3. Scheduler
+## Phases
 
-Three job types:
+| Phase | Tag | Status | Scope |
+|---|---|---|---|
+| Phase 1 — Foundation | `v0.1.0` | ✅ shipped 2026-04-27 | Capture → classify → render pipeline; Library; Todo tiled timeline + completed history; classifier debug viewer; morning + quote jobs; app icon. |
+| Phase 2 — Premium upgrade | `v0.2.0` *(planned)* | ⏳ planning | Gmail integration; durable RSS news source; custom notification UI; widget re-enable. |
 
-**Hourly**
-- Personal todos refresh
-- Weather update (only if location changed or threshold crossed)
-- Screen time limit checks → notifications
-
-**Daily (once)**
-- News fetch
-- Full behavior summary via Claude (~60 words is enough)
-- Motivational insights
-
-**On-demand**
-- Button tap → pull everything → LLM → display
-
-iOS implementation: `BGAppRefreshTask`. Background execution is not guaranteed — always trigger a refresh on app open as a fallback.
-
-### 4. LLM Processing
+## Repository layout
 
 ```
-RAW TEXT + API DATA + EMAIL SUBJECTS + SCREEN TIME + LOCATION
-    → Claude API
-    → structured JSON
-    → /data/processed/YYYY-MM-DD.json
+Sarvis/                  iOS host app
+  App/                   SarvisApp (entry, BG task registration), RootView
+  Models/                TodoItem, RawEntry, InputType, ScreenDefinition, ...
+  Services/
+    LLM/                 Anthropic provider, ClassifierService, PromptLibrary
+    Storage/             RawStore, ProfileStore, DailyArtifactStore
+    News/                GNewsProvider, NewsCache, NewsService
+    Quotes/              QuoteService
+    Jobs/                MorningJob, QuoteJob
+    NotificationService.swift, KeychainService.swift
+  UI/
+    Theme.swift          design tokens, palette, themed cards, haptics
+    Composer/            dynamic UI: ElementRegistry, ScreenState, DynamicScreen
+    Elements/Input/      TextInput, CalendarPicker, TypeChip, ImportancePicker, ...
+    Elements/Display/    SummaryCard, TodoListRow, NotesListRow, ShoppingListRow, ...
+  Screens/               Capture, Today, Library (ProcessedView), Settings, Edit sheets
+  Resources/
+    Prompts/             bundled mirror of /prompts
+    Quotes/              seed.json
+    Assets.xcassets/     app icon
+SarvisWidget/            WidgetKit extension (currently disabled — see docs/phase-2.md)
+prompts/                 source-of-truth LLM prompts
+docs/                    phase plans + design notes
+.dispatch/tasks/         worker plan + output history
+tools/                   sync-prompts.sh and other dev tooling
+project.yml              XcodeGen spec
 ```
 
-Key rules:
-- **Don't call APIs inside the LLM prompt.** Fetch first, send clean data.
-- **Cache everything.** Protect free-tier limits.
-- **Keep raw and structured separate.** That separation is the whole architecture.
+## Conventions
 
-### 5. Location Intelligence
+- **Theme tokens are the source of truth.** Never hardcode colors, radii, or spacing. Use `Theme.Spacing`, `Theme.Radius`, `Theme.Typography`, `Theme.Palette`. See [`STATE.md` → UI rules](./STATE.md#ui-rules).
+- **LLM is for transforms only** — summarizing, normalizing, classifying. **Never** as a search engine or data fetcher.
+- **No third-party deps.** Apple frameworks + Anthropic Claude API only.
+- **Raw and processed stay separate.** Captures persist as raw JSON; processed buckets are derived and rebuildable.
+- **Cache aggressively.** Free API quotas are tight; LLM cost compounds fast.
+- **Commit freely; push on milestones.** A tagged release, a wave done, or an explicit ask.
 
-Use `CLLocationManager` significant-change mode (not continuous GPS — battery matters).
+## Reality checks
 
-Logic:
-- Track precise for 7 days
-- Compress into hotspots (frequent locations + avg duration)
+**iOS background execution is not guaranteed.** `BGAppRefreshTask` is best-effort — iOS throttles based on battery, usage patterns, and its own mood. Always refresh on foreground; don't design a feature that breaks if background tasks skip.
 
-```json
-{
-  "place": "Office",
-  "lat": 37.7749,
-  "lng": -122.4194,
-  "visits": 5,
-  "avg_duration": "3h"
-}
-```
+**Free API quotas are tight.** GNews free tier is 100 req/day. Phase 2 moves news to RSS specifically to escape this.
 
-Stored in `/data/location/`.
+**Claude API cost compounds.** A single daily summary call is cheap; firing a full behavior-layer prompt on every background task spikes spend. Gate LLM calls.
 
-Contextual notifications become possible once hotspots are established:
-> "You're near the gym — you haven't gone in 4 days."
+**Gmail OAuth is genuinely annoying.** Cloud Console setup, OAuth consent screen, redirect URIs — budget setup time. We're avoiding the Google SDK by going native (`ASWebAuthenticationSession` + URLSession + Keychain refresh tokens).
 
-### 6. Email Integration
+**WidgetKit cannot host a live keyboard.** The widget's "text field" is a tappable lookalike that deep-links into the app's `QuickCaptureSheet`. There is no workaround.
 
-Goal: privacy-first. Don't read full email bodies — only subject lines.
-
-Flow:
-```
-Gmail API / IMAP → subject lines → /data/email/raw.txt
-    → Claude → /data/email/processed.json
-```
-
-Example input to Claude:
-```
-"Your bank statement is ready"
-"Team meeting rescheduled"
-"50% off sale!!!"
-```
-
-Example output:
-```json
-{
-  "important": [
-    "Your bank statement is ready",
-    "Team meeting rescheduled"
-  ],
-  "ignore": ["50% off sale!!!"],
-  "actions": [
-    { "task": "Check bank statement", "priority": "high" }
-  ]
-}
-```
-
-Fetch frequency: every 2–4 hours, or on-demand.
-
-### 7. Screen Time Control
-
-Uses `FamilyControls` + `DeviceActivity` framework.
-
-**What you can do:**
-- Track per-app usage (Instagram, TikTok, etc.)
-- Set daily time limits
-- Set time-window rules ("no Instagram after 11 PM")
-- Send notifications at 80% / 100% / 120% of limit
-- Show Apple's native app shield (user must grant permission)
-
-**What you cannot do:**
-- Force-close apps
-- Block without explicit user permission
-- Anything Apple hasn't blessed
-
-Data model:
-```json
-{
-  "app": "Instagram",
-  "daily_limit": "60min",
-  "used": "75min",
-  "status": "exceeded"
-}
-```
-
-Notification escalation:
-- 80% → warning
-- 100% → alert
-- 120% → aggressive LLM-generated nudge
-
-### 8. Behavior Intelligence Layer
-
-This is the edge. Combine everything into one Claude call:
-
-```
-notes + email subjects + screen usage + location + weather + news
-    → Claude
-    → behavioral JSON
-```
-
-```json
-{
-  "todos": ["..."],
-  "insights": [
-    "You spent 2.5h on Instagram today",
-    "You have 2 important unread emails"
-  ],
-  "nudges": [
-    "Take a break from social media",
-    "Reply to your manager email"
-  ],
-  "mood": "low"
-}
-```
-
-### 9. Notification Engine
-
-Four categories:
-
-| Type | Examples |
-|---|---|
-| System-based | Weather alert, screen time exceeded |
-| LLM-based | "You've been unproductive today", "You might be stressed" |
-| Scheduled | Daily evening summary |
-| Contextual | "You're near the gym — go workout" |
-
-Implementation: `UNUserNotificationCenter`.
-
----
-
-## Dynamic UI
-
-Sarvis uses a **composer + element registry** model. Screens are data, not hardcoded views.
-
-Each screen is a `ScreenDefinition` — a list of `ElementSpec`s with a type tag, config, and optional binding. A `ScreenComposer` reads the definition and instantiates the matching `SwiftUI` view from a registry. Adding a new element means dropping a folder and registering it — no changes to existing screens.
-
-```swift
-struct ScreenDefinition: Codable {
-    let id: String
-    let title: String
-    let elements: [ElementSpec]
-}
-
-struct ElementSpec: Codable {
-    let type: String        // "TextInput", "CalendarPicker", etc.
-    let config: [String: AnyCodable]
-    let binding: String?    // key into the screen's state dict
-}
-```
-
-**Element directory layout:**
-
-```
-Sarvis/UI/Elements/
-    Input/
-        TextInput/
-        CalendarPicker/
-        TimePicker/
-        DurationPicker/
-        TypeChip/
-        ImportancePicker/
-        ToggleRow/
-        LocationPicker/
-        AudioRecorder/
-        AttachmentPicker/
-    Display/
-        TodoList/
-        SummaryCard/
-        WeatherCard/
-        NewsList/
-        InsightCard/
-        NudgeBanner/
-        MapHotspots/
-        ScreenTimeChart/
-        EmailList/
-        MoodIndicator/
-        JSONViewer/
-        ActionButton/
-```
-
-Each folder contains the `View`, a `Config` struct, and a `register()` call. The registry maps the type string to a view factory. The composer iterates `elements`, looks up the factory, passes config, and stacks the result.
-
-This means the LLM can eventually describe a screen in JSON and the app will render it — no code changes required.
-
----
-
-## File & Folder Structure
-
-```
-Sarvis/                         # main app target (post-rename)
-    App/
-        SarvisApp.swift
-        RootView.swift
-    Models/
-        InputType.swift
-        TodoItem.swift
-        TodoStore.swift
-    Screens/                    # thin SwiftUI screens (use Composer)
-        InputView.swift
-        TodayView.swift
-        SettingsView.swift
-    Services/
-        LLM/
-            LLMProvider.swift
-            AnthropicProvider.swift
-            LLMService.swift
-            PromptLibrary.swift
-        Storage/
-            InputProcessor.swift
-        NotificationService.swift
-        KeychainService.swift
-    UI/
-        Elements/
-            Input/  ...
-            Display/ ...
-        Theme.swift
-        Toast.swift
-    Resources/
-        Assets.xcassets/
-        Prompts/                # bundled prompt templates (synced from /prompts)
-    Info.plist
-
-SarvisWidget/                   # WidgetKit target
-
-prompts/                        # source-of-truth prompt files
-    basic_app.md
-    capture_cleanup.md
-    classify_input.md
-    daily_update.md
-    sensitive_detect.md
-    sync-prompts.sh             # copies prompts into app bundle
-
-tools/                          # dev tooling
-
-project.yml                     # xcodegen spec
-setup.sh
-```
-
----
-
-## Storage Layout
-
-These paths resolve to the iOS **Documents directory** at runtime — not the repo. They are not committed to source control.
-
-```
-{Documents}/data/
-    raw/            # YYYY-MM-DD.txt — raw user input, append-only
-    processed/      # YYYY-MM-DD.json — LLM-structured output
-    email/
-        raw.txt     # fetched subject lines
-        processed.json
-    location/       # location logs + hotspot snapshots
-    screen_time/    # DeviceActivity snapshots
-    cache/          # API responses (news, weather) — safe to delete
-```
-
----
-
-## Tech Stack
+## Tech stack
 
 | Layer | Technology |
 |---|---|
 | Language | Swift 5.9+ |
 | UI | SwiftUI (iOS 17+) |
-| Location | CoreLocation (significant-change mode) |
 | Background jobs | BackgroundTasks (`BGAppRefreshTask`) |
-| Notifications | UNUserNotificationCenter |
-| Widget | WidgetKit + App Intents |
-| Screen time | FamilyControls + DeviceActivity |
-| LLM | Anthropic Claude API |
-| Secrets | Keychain (never in UserDefaults or source) |
+| Notifications | `UNUserNotificationCenter` (Phase 2: + Notification Content Extension) |
+| Widget | WidgetKit |
+| LLM | Anthropic Claude API (`claude-opus-4-7` default) |
+| Secrets | Keychain |
 | Networking | URLSession |
-| Storage | FileManager (JSON + plaintext) |
-| Build | xcodegen → Xcode 17 |
-
----
-
-## MVP Phases
-
-**Phase 1 — Core engine**
-- [ ] Raw text input → save to `/data/raw/`
-- [ ] On-demand button → fetch weather + news → send to Claude → display JSON
-- [ ] Basic todo list from LLM output
-
-**Phase 2 — Automation**
-- [ ] `BGAppRefreshTask` for daily news + weather
-- [ ] Processed JSON persisted and displayed on dashboard
-
-**Phase 3 — Notifications + todos**
-- [ ] Todo generation wired to `UNUserNotificationCenter`
-- [ ] Daily summary notification (evening)
-- [ ] LLM-generated nudges
-
-**Phase 4 — Location intelligence**
-- [ ] Significant-change location tracking
-- [ ] Hotspot compression after 7 days
-- [ ] Contextual notifications based on location
-
-**Phase 5 — Email classification**
-- [ ] Gmail OAuth or IMAP subject-line fetch
-- [ ] LLM classification → important / ignore / action items
-- [ ] Email insights folded into daily behavior summary
-
-**Phase 6 — Screen time**
-- [ ] DeviceActivity monitoring
-- [ ] Usage thresholds + escalating notifications
-- [ ] Screen time data merged into behavior layer LLM call
-
----
-
-## Setup & Build
-
-Requirements: Xcode 17, iOS 17+ device or simulator, Anthropic API key.
-
-```bash
-# Clone and install xcodegen if needed
-brew install xcodegen
-
-# Generate .xcodeproj and copy prompt files into bundle
-./setup.sh
-
-# Open in Xcode
-open Sarvis.xcodeproj
-```
-
-Add your API key in Settings inside the app — it's stored in Keychain, never in source or `UserDefaults`.
-
-For prompt changes, edit files in `/prompts/` and run:
-
-```bash
-./prompts/sync-prompts.sh
-```
-
----
-
-## Reality Checks
-
-**iOS background execution is not guaranteed.** `BGAppRefreshTask` is best-effort — iOS throttles it based on battery, usage patterns, and its own mood. Always refresh on foreground. Don't design a feature that breaks if background tasks skip.
-
-**Location + background + screen tracking = battery pressure.** Use significant-change location (not continuous GPS). Cache API responses aggressively. Screen time monitoring has minimal overhead, but piling it on top of location and background fetch will show up in Battery settings.
-
-**Free API quotas are tight.** NewsAPI free tier is 100 requests/day. Cache news responses and don't re-fetch if the cache is fresh. Weather is more lenient but still cache it.
-
-**Claude API cost compounds fast.** A single daily summary call is cheap. If every background task fires a full behavior-layer prompt, the cost spikes. Gate LLM calls — use cached results where freshness isn't critical.
-
-**Screen time API requires explicit user trust.** FamilyControls entitlement must be approved by Apple. The user must grant "Screen Time" permission manually. You can't silently enable it.
-
-**Gmail OAuth is genuinely annoying.** App review, OAuth consent screen setup, redirect URIs — budget time for it. IMAP is simpler to prototype with but less reliable on modern Google accounts.
-
----
-
-## Roadmap
-
-- [ ] Dynamic UI composer — build `ScreenComposer`, element registry, and wire existing screens to definitions
-- [ ] Widget — surface today's todos and a one-line nudge from the lock screen
-- [ ] Email integration — Gmail OAuth + subject classification pipeline
-- [ ] Screen time integration — DeviceActivity setup + behavior layer merge
-- [ ] Location intelligence — hotspot compression + contextual triggers
-- [ ] Prompt tuning — structured output schema enforcement so LLM JSON never breaks the parser
-- [ ] Cost controls — token budget per call, fallback to cached output when quota is low
+| Storage | FileManager (JSON) |
+| Build | XcodeGen → Xcode 17 |

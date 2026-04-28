@@ -50,6 +50,18 @@ targets:
           - CFBundleURLName: com.shrey.sarvis
             CFBundleURLSchemes:
               - sarvis
+          # Phase 2.2 — Google OAuth callback. The reverse-domain scheme is
+          # the user-supplied iOS OAuth client ID with its parts reversed
+          # (e.g. `com.googleusercontent.apps.123-abc`). It is set at build
+          # time via the GOOGLE_OAUTH_REVERSE_CLIENT_ID build setting; see
+          # docs/phase-2.md §2.2 setup checklist.
+          - CFBundleURLName: com.shrey.sarvis.googleauth
+            CFBundleURLSchemes:
+              - $(GOOGLE_OAUTH_REVERSE_CLIENT_ID)
+        # Phase 2.2 — Google OAuth iOS client ID. Read at runtime by
+        # GoogleAuth via Bundle.main.infoDictionary["GoogleOAuthClientID"].
+        # Set this in your local build settings; see docs/phase-2.md §2.2.
+        GoogleOAuthClientID: $(GOOGLE_OAUTH_CLIENT_ID)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.shrey.sarvis
@@ -59,34 +71,69 @@ targets:
         SWIFT_EMIT_LOC_STRINGS: "YES"
         ENABLE_PREVIEWS: "YES"
         GENERATE_INFOPLIST_FILE: "NO"
-# Widget temporarily disabled — uncomment block below + the dependency
-# above to re-enable. Source still lives in `SarvisWidget/`.
-#    dependencies:
-#      - target: SarvisWidget
-#        embed: true
-#
-#  SarvisWidget:
-#    type: app-extension
-#    platform: iOS
-#    deploymentTarget: "17.0"
-#    sources:
-#      - path: SarvisWidget
-#    info:
-#      path: SarvisWidget/Info.plist
-#      properties:
-#        CFBundleDisplayName: SarvisWidget
-#        CFBundleShortVersionString: "1.0"
-#        CFBundleVersion: "1"
-#        NSExtension:
-#          NSExtensionPointIdentifier: com.apple.widgetkit-extension
-#    settings:
-#      base:
-#        PRODUCT_BUNDLE_IDENTIFIER: com.shrey.sarvis.widget
-#        SWIFT_VERSION: "5.9"
-#        TARGETED_DEVICE_FAMILY: "1,2"
-#        GENERATE_INFOPLIST_FILE: "NO"
-#        CODE_SIGN_STYLE: Automatic
-#    dependencies:
-#      - sdk: WidgetKit.framework
-#      - sdk: SwiftUI.framework
-#      - sdk: AppIntents.framework
+    dependencies:
+      - target: SarvisWidget
+        embed: true
+      - target: SarvisNotificationContent
+        embed: true
+
+  SarvisWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: SarvisWidget
+    info:
+      path: SarvisWidget/Info.plist
+      properties:
+        CFBundleDisplayName: SarvisWidget
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shrey.sarvis.widget
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: "NO"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+      - sdk: AppIntents.framework
+
+  SarvisNotificationContent:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: SarvisNotificationContent
+    info:
+      path: SarvisNotificationContent/Info.plist
+      properties:
+        CFBundleDisplayName: SarvisNotificationContent
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.content-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationViewController
+          NSExtensionAttributes:
+            UNNotificationExtensionCategory:
+              - task.reminder
+              - news.briefing
+              - quote.morning
+            UNNotificationExtensionInitialContentSizeRatio: 1.0
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shrey.sarvis.notification-content
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: "NO"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
+    dependencies:
+      - sdk: UserNotifications.framework
+      - sdk: UserNotificationsUI.framework
+      - sdk: SwiftUI.framework

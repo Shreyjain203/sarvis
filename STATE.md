@@ -7,7 +7,7 @@
 ## Phase status
 
 - ✅ **Phase 1 — Foundation (`v0.1.0`, 2026-04-27).** Capture → classify → render pipeline working end-to-end. Library tab with all sections live. Todo tiled timeline (Today / Tomorrow / Near Future / Everything Else) with swipe-done, tap-to-edit, completed history. Classifier debug viewer in Settings. Notifications + morning/quote jobs scheduled. Widget code present but disabled. Tagged at commit on `main`.
-- ⏳ **Phase 2 — Premium upgrade.** Scope TBD; user will direct.
+- ✅ **Phase 2 — Premium upgrade (2026-04-27).** All four workstreams shipped: 2.1 Google News RSS replacing GNews; 2.2 Gmail integration (native OAuth + classified digest + Library Email section, requires user OAuth client ID before runtime — see `docs/phase-2.md` §2.2 setup checklist); 2.3 Notification Content Extension with three category templates (task.reminder, news.briefing, quote.morning); 2.4 `SarvisWidget` re-enabled, trimmed to `systemLarge` with capture deep-link. Simulator build clean. Device codesign requires registering `com.shrey.sarvis.notification-content` as an App ID. Tag `v0.2.0` after device verification.
 
 When the user says "Phase 1," they mean the `v0.1.0` tag on `main` — the working baseline above. Future phases will add their own tags (`v0.2.0`, etc.).
 
@@ -184,6 +184,9 @@ House conventions — every worker and instance must follow these.
 
 ## Update log
 
+- **2026-04-27** — Phase 2.2 — Gmail integration shipped (native OAuth via ASWebAuthenticationSession + Gmail REST; morning-only fetch; classified digest; Library → Email section). Requires user to provide OAuth client ID before runtime. See docs/phase-2.md §2.2 setup checklist.
+
+- **2026-04-27** — Phase 2.3 — Notification Content Extension shipped with three category templates (task.reminder, news.briefing, quote.morning). `SarvisNotificationContent` target added to `project.yml`; `NotificationService` + `MorningJob` + `QuoteJob` updated to set `categoryIdentifier` and populate `userInfo` per contract. BUILD SUCCEEDED (simulator). Device codesign: register `com.shrey.sarvis.notification-content` as an App ID in Apple Developer portal before testing on physical device.
 - **2026-04-27** — Phase 2.1 — switched news pipeline from GNews to Google News RSS via new `RssProvider`; `GNewsProvider` deprecated (kept on disk); Settings GNews key row replaced with topic input; `NewsService` default provider updated.
 - **2026-04-27** — Phase 2.4 — `SarvisWidget` re-enabled, trimmed to `systemLarge` only with capture deep-link (`sarvis://capture`). Codesign: both targets `Automatic` + `DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)` on widget. `xcodegen generate` clean.
 - **2026-04-27** — **Phase 1 complete (`v0.1.0`).** Tagged on `main`. Marks the working foundation: capture, classify, Library, Todo tiles, completed history, debug viewer, app icon, notifications.

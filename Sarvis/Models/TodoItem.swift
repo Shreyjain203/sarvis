@@ -25,6 +25,17 @@ enum Importance: Int, Codable, CaseIterable, Identifiable {
         case .critical: return "flame.fill"
         }
     }
+
+    /// String key used in notification `userInfo["importance"]` and read by the
+    /// SarvisNotificationContent extension's `ExtensionTheme.Palette.dot(for:)`.
+    var notifString: String {
+        switch self {
+        case .low:      return "low"
+        case .medium:   return "med"
+        case .high:     return "high"
+        case .critical: return "critical"
+        }
+    }
 }
 
 struct TodoItem: Identifiable, Codable, Hashable {
