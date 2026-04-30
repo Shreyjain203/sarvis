@@ -44,6 +44,54 @@ final class EmailDigestService: ObservableObject {
         DailyArtifactStore.shared.read(folder: "email", date: Date())
     }
 
+    // MARK: - Delete
+
+    /// Removes one `EmailItem` (by Gmail message ID) from today's digest across
+    /// all three buckets (important / fyi / promo) AND drops any extracted
+    /// `EmailAction`s whose `sourceMessageID` matches. Atomic rewrite of
+    /// `Documents/processed/email/<today>.json` via `DailyArtifactStore`.
+    /// Returns the updated digest, or `nil` if there was no digest on disk
+    /// (or nothing matched).
+    @discardableResult
+    func deleteEmail(id: String) -> EmailDigest? {
+        guard let current = todaysDigest() else { return nil }
+        let updated = EmailDigest(
+            date: current.date,
+            important: current.important.filter { $0.id != id },
+            fyi:       current.fyi.filter       { $0.id != id },
+            promo:     current.promo.filter     { $0.id != id },
+            actions:   current.actions.filter   { $0.sourceMessageID != id }
+        )
+        // Skip the rewrite if nothing changed.
+        guard updated.important.count != current.important.count
+            || updated.fyi.count       != current.fyi.count
+            || updated.promo.count     != current.promo.count
+            || updated.actions.count   != current.actions.count
+        else { return nil }
+        DailyArtifactStore.shared.write(updated, folder: "email", date: Date())
+        return updated
+    }
+
+    /// Removes a single extracted `EmailAction` from today's digest (matched by
+    /// the synthetic `EmailAction.id`). The underlying email item is left in
+    /// place. Atomic rewrite. Returns the updated digest, or `nil` if no
+    /// matching action was found.
+    @discardableResult
+    func deleteAction(id: String) -> EmailDigest? {
+        guard let current = todaysDigest() else { return nil }
+        let filtered = current.actions.filter { $0.id != id }
+        guard filtered.count != current.actions.count else { return nil }
+        let updated = EmailDigest(
+            date: current.date,
+            important: current.important,
+            fyi:       current.fyi,
+            promo:     current.promo,
+            actions:   filtered
+        )
+        DailyArtifactStore.shared.write(updated, folder: "email", date: Date())
+        return updated
+    }
+
     // MARK: - Public refresh
 
     /// Fetches recent email, classifies via the LLM, and writes the digest.

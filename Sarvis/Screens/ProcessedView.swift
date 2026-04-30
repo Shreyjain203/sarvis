@@ -190,8 +190,8 @@ struct ProcessedView: View {
                 emptyState(icon: "doc.text", message: "No notes yet",
                            detail: "Capture a note on the Capture tab.")
             } else {
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(items) { NoteCard(item: $0) }
+                swipeDeleteList(items: items, estimatedRowHeight: 92) { NoteCard(item: $0) } onDelete: { item in
+                    todoStore.delete(item.id)
                 }
             }
         }
@@ -216,8 +216,8 @@ struct ProcessedView: View {
                            detail: "Add items on the Capture tab.")
             } else {
                 // Flat list for MVP (urgency grouping blocked by metadata gap — see above)
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(items) { ShoppingItemCard(item: $0) }
+                swipeDeleteList(items: items, estimatedRowHeight: 76) { ShoppingItemCard(item: $0) } onDelete: { item in
+                    todoStore.delete(item.id)
                 }
             }
         }
@@ -234,8 +234,8 @@ struct ProcessedView: View {
                 emptyState(icon: "book.closed", message: "No diary entries yet",
                            detail: "Write your first diary entry on the Capture tab.")
             } else {
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(items) { DiaryCard(item: $0) }
+                swipeDeleteList(items: items, estimatedRowHeight: 120) { DiaryCard(item: $0) } onDelete: { item in
+                    todoStore.delete(item.id)
                 }
             }
         }
@@ -252,8 +252,8 @@ struct ProcessedView: View {
                 emptyState(icon: "lightbulb", message: "No ideas captured yet",
                            detail: "Brain-dump on the Capture tab.")
             } else {
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(items) { NoteCard(item: $0) }
+                swipeDeleteList(items: items, estimatedRowHeight: 92) { NoteCard(item: $0) } onDelete: { item in
+                    todoStore.delete(item.id)
                 }
             }
         }
@@ -270,8 +270,8 @@ struct ProcessedView: View {
                 emptyState(icon: "sparkles", message: "No suggestions yet",
                            detail: "Sarvis will surface suggestions as you use the app.")
             } else {
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(items) { NoteCard(item: $0) }
+                swipeDeleteList(items: items, estimatedRowHeight: 92) { NoteCard(item: $0) } onDelete: { item in
+                    todoStore.delete(item.id)
                 }
             }
         }
@@ -286,9 +286,35 @@ struct ProcessedView: View {
                 emptyState(icon: "quote.bubble", message: "No quotes loaded",
                            detail: "Quotes from seed.json will appear here.")
             } else {
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(quotes, id: \.text) { QuoteDisplayCard(quote: $0) }
+                // Seed quotes (bundled in `seed.json`) are immutable — they
+                // get rendered without a destructive swipe action. Only
+                // user-captured quotes in `Documents/processed/quotes.json`
+                // are deletable.
+                List {
+                    ForEach(quotes, id: \.text) { quote in
+                        let isSeed = QuoteService.shared.isSeed(quote)
+                        QuoteDisplayCard(quote: quote)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                            .swipeActions(edge: .trailing, allowsFullSwipe: !isSeed) {
+                                if !isSeed {
+                                    Button(role: .destructive) {
+                                        Haptics.light()
+                                        if QuoteService.shared.delete(quote) {
+                                            quotes.removeAll { $0.text == quote.text }
+                                        }
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                            }
+                    }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .scrollDisabled(true)
+                .frame(height: CGFloat(quotes.count) * 140)
             }
         }
     }
@@ -304,9 +330,27 @@ struct ProcessedView: View {
                     .padding(.top, Theme.Spacing.xl)
                     .foregroundStyle(Theme.Palette.muted)
             } else if let articles = newsArticles, !articles.isEmpty {
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(articles) { NewsHeadlineCard(article: $0) }
+                List {
+                    ForEach(articles) { article in
+                        NewsHeadlineCard(article: article)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    Haptics.light()
+                                    NewsCache().delete(articleID: article.id, for: Date())
+                                    newsArticles?.removeAll { $0.id == article.id }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                    }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .scrollDisabled(true)
+                .frame(height: CGFloat(articles.count) * 130)
             } else {
                 newsEmptyState
             }
@@ -381,27 +425,34 @@ struct ProcessedView: View {
                     if !digest.important.isEmpty {
                         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                             subSectionLabel("Important")
-                            VStack(spacing: Theme.Spacing.sm) {
-                                ForEach(digest.important) { item in
-                                    EmailItemRow(
-                                        item: item,
-                                        palette: .important,
-                                        isExpanded: expandedEmailIDs.contains(item.id),
-                                        onTap: { toggleEmailExpansion(item.id) }
-                                    )
-                                }
-                            }
+                            emailItemList(digest.important, palette: .important)
                         }
                     }
 
                     if !digest.actions.isEmpty {
                         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                             subSectionLabel("Actions")
-                            VStack(spacing: Theme.Spacing.sm) {
+                            List {
                                 ForEach(digest.actions) { action in
                                     EmailActionRow(action: action)
+                                        .listRowBackground(Color.clear)
+                                        .listRowSeparator(.hidden)
+                                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                            Button(role: .destructive) {
+                                                Haptics.light()
+                                                emailDigest = EmailDigestService.shared.deleteAction(id: action.id)
+                                                    ?? emailDigest
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                        }
                                 }
                             }
+                            .listStyle(.plain)
+                            .scrollContentBackground(.hidden)
+                            .scrollDisabled(true)
+                            .frame(height: CGFloat(digest.actions.count) * 88)
                         }
                     }
                 }
@@ -409,6 +460,40 @@ struct ProcessedView: View {
                 emailEmptyState
             }
         }
+    }
+
+    /// Themed `List` of `EmailItemRow`s with full-swipe delete that mutates
+    /// today's digest via `EmailDigestService.shared.deleteEmail(id:)`.
+    /// Tap-to-expand still works (the row's internal Button handles tap),
+    /// and the swipe gesture lives on the row container.
+    @ViewBuilder
+    private func emailItemList(_ items: [EmailItem], palette: EmailItemRow.Palette) -> some View {
+        List {
+            ForEach(items) { item in
+                EmailItemRow(
+                    item: item,
+                    palette: palette,
+                    isExpanded: expandedEmailIDs.contains(item.id),
+                    onTap: { toggleEmailExpansion(item.id) }
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) {
+                        Haptics.light()
+                        emailDigest = EmailDigestService.shared.deleteEmail(id: item.id)
+                            ?? emailDigest
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .scrollDisabled(true)
+        .frame(height: CGFloat(items.count) * 110)
     }
 
     private var emailNotConnectedState: some View {
@@ -579,6 +664,41 @@ struct ProcessedView: View {
     }
 
     // MARK: - Reusable sub-components
+
+    /// Renders a `List` of `Identifiable` rows with a full-swipe destructive
+    /// delete on the trailing edge. Used by Notes/Shopping/Diary/Ideas/
+    /// Suggestions sections to bring iOS-native swipe-to-delete to what were
+    /// previously plain `VStack`s. `estimatedRowHeight` is multiplied by
+    /// `items.count` to size the embedded list (it lives inside an outer
+    /// `ScrollView`, so the inner `List` is `.scrollDisabled(true)`).
+    @ViewBuilder
+    private func swipeDeleteList<T: Identifiable, RowView: View>(
+        items: [T],
+        estimatedRowHeight: CGFloat,
+        @ViewBuilder rowContent: @escaping (T) -> RowView,
+        onDelete: @escaping (T) -> Void
+    ) -> some View {
+        List {
+            ForEach(items) { item in
+                rowContent(item)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            Haptics.light()
+                            onDelete(item)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .scrollDisabled(true)
+        .frame(height: CGFloat(items.count) * estimatedRowHeight)
+    }
 
     @ViewBuilder
     private func sectionHeader(_ title: String, symbol: String) -> some View {

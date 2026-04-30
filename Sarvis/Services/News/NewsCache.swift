@@ -39,6 +39,24 @@ struct NewsCache {
         return try? Self.decoder.decode([NewsArticle].self, from: data)
     }
 
+    /// Removes the article with the given `id` (== `url`) from the cached list
+    /// for `date` and rewrites the file atomically. Returns the new list, or
+    /// `nil` if the file didn't exist or no matching article was found.
+    @discardableResult
+    func delete(articleID: String, for date: Date) -> [NewsArticle]? {
+        guard var articles = read(for: date) else { return nil }
+        let before = articles.count
+        articles.removeAll { $0.id == articleID }
+        guard articles.count != before else { return nil }
+        do {
+            try write(articles, for: date)
+            return articles
+        } catch {
+            print("NewsCache delete error:", error)
+            return nil
+        }
+    }
+
     // MARK: - Helpers
 
     private static func filename(for date: Date) -> String {

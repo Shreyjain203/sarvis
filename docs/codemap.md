@@ -12,7 +12,7 @@
   TodoItem.swift          — `TodoItem` struct + `Importance` enum (low/medium/high/critical). Fields: `id`, `text`, `importance`, `isSensitive`, `type: InputType`, `createdAt`, `dueAt`, `isDone`, `notificationID`, `completedAt`.
   RawEntry.swift          — `RawEntry` struct. Fields: `id`, `text`, `importance`, `isSensitive`, `suggestedType: InputType?`, `dueAt`, `capturedAt`, `processed`, `processedAt`, `notificationID`. Custom `Decodable` for backward compat.
   InputType.swift         — `InputType` enum: task/note/idea/sensitive/other/diary/suggestion/shopping/quote. `.fileName` → per-type JSON filename under processed/.
-  TodoStore.swift         — `@MainActor ObservableObject`. `TodoStore.shared`. Singleton managing all processed `TodoItem` items across typed files. Also the capture entry point (`capture(...)`).
+  TodoStore.swift         — `@MainActor ObservableObject`. `TodoStore.shared`. Singleton managing all processed `TodoItem` items across typed files. Also the capture entry point (`capture(...)`). `delete(_ id:)` rewrites the type file atomically and cancels the pending `notificationID` via `NotificationService.shared.cancel(_:)` if set.
   ScreenDefinition.swift  — `ScreenDefinition` + (contains or imports) `ElementSpec` data types for dynamic-UI screens.
   ElementSpec.swift       — `ElementSpec` struct (type key, bindingKey, config dict) for dynamic-UI element descriptors.
   AnyCodableValue.swift   — Type-erased Codable wrapper for `ScreenState` value bag.
@@ -37,14 +37,14 @@
   NewsProvider.swift      — `NewsProvider` protocol (`fetchTopHeadlines(country:limit:) async throws -> [NewsArticle]`). `NewsError` enum.
   RssProvider.swift       — `RssProvider: NewsProvider`. Active default in `NewsService`. Google News RSS via `Foundation.XMLParser`. Topic read from `UserDefaults["sarvis_news_topic"]` (default `"top news"`). `RssProvider.topicDefaultsKey`, `RssProvider.defaultTopic`.
   GNewsProvider.swift     — Deprecated (v0.2.0). Still on disk; not referenced by `NewsService`.
-  NewsCache.swift         — Value-type. `NewsCache`. `write(_:for:)`, `read(for:) -> [NewsArticle]?`. Path: `Documents/cache/news/<YYYY-MM-DD>.json`. Atomic write.
+  NewsCache.swift         — Value-type. `NewsCache`. `write(_:for:)`, `read(for:) -> [NewsArticle]?`, `delete(articleID:for:)` (atomic rewrite, removes one article from a date's cache). Path: `Documents/cache/news/<YYYY-MM-DD>.json`. Atomic write.
   NewsService.swift       — `@MainActor` singleton. `NewsService.shared`. `refreshToday(country:limit:) async throws -> [NewsArticle]`, `articlesForToday() -> [NewsArticle]?`.
 
 ## Sarvis/Services/Email/
   GoogleAuth.swift        — `@MainActor` singleton. `GoogleAuth.shared`. `authorize() async throws`, `accessToken() async throws -> String` (auto-refresh), `disconnect()`, `isConnected: Bool`, `email: String?`. Refresh token in Keychain account `"gmail_refresh_token"`. Client ID from `Info.plist["GoogleOAuthClientID"]`.
   GmailProvider.swift     — `GmailProvider: EmailProvider`. Two-call pattern: list IDs (`newer_than:1d`), fetch metadata. `fetchRecent(limit:since:) async throws -> [EmailItem]`. 401 auto-refreshes via `GoogleAuth`.
   EmailCache.swift        — Value-type. `EmailCache`. `saveToday(_:)`, `loadToday() -> [EmailItem]?`, `save(_:for:)`, `load(for:) -> [EmailItem]?`, `clearAll()`. Path: `Documents/cache/email/<YYYY-MM-DD>.json`.
-  EmailDigestService.swift — `@MainActor` singleton. `EmailDigestService.shared`. `refreshToday(limit:) async throws -> EmailDigest` (fetch → cache → LLM classify → `DailyArtifactStore` write). `todaysDigest() -> EmailDigest?`. Persists at `Documents/processed/email/<date>.json`.
+  EmailDigestService.swift — `@MainActor` singleton. `EmailDigestService.shared`. `refreshToday(limit:) async throws -> EmailDigest` (fetch → cache → LLM classify → `DailyArtifactStore` write). `todaysDigest() -> EmailDigest?`. `deleteEmail(id:) -> EmailDigest?` (removes one item across all 3 buckets + drops actions referencing it). `deleteAction(id:) -> EmailDigest?` (removes one extracted action). Persists at `Documents/processed/email/<date>.json`.
 
 ## Sarvis/Services/Jobs/
   MorningJob.swift        — `@MainActor` enum (namespace). `MorningJob.taskID = "com.shrey.sarvis.morning"`. `register()` (call in `App.init()`), `scheduleNext()` (targets next 7 AM). Handler: news refresh → LLM summary → artifact write → (if Gmail connected) email digest → `news.briefing` notification.
@@ -55,7 +55,7 @@
   KeychainService.swift   — Enum (namespace). `KeychainService.save(_:for:)`, `KeychainService.read(_:) -> String?`, `KeychainService.delete(_:)`. Service ID `"com.shrey.reminder.api"`.
 
 ## Sarvis/Services/Quotes/
-  QuoteService.swift      — `@MainActor` singleton. `QuoteService.shared`. `Quote` struct (text, author?). `loadAll() -> [Quote]` (seed.json + Documents/processed/quotes.json, deduped), `random() -> Quote?`.
+  QuoteService.swift      — `@MainActor` singleton. `QuoteService.shared`. `Quote` struct (text, author?). `loadAll() -> [Quote]` (seed.json + Documents/processed/quotes.json, deduped), `random() -> Quote?`, `isSeed(_:) -> Bool`, `delete(_:) -> Bool` (atomic rewrite of `Documents/processed/quotes.json`; no-ops on bundled seed quotes).
 
 ## Sarvis/UI/
   Theme.swift             — `Theme` enum with nested: `Spacing`, `Radius`, `Typography`, `Palette`, `LayeredBackground` View, `Haptics` (soft/light/success). `.themedCard(padding:cornerRadius:)` modifier.

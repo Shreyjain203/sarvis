@@ -224,6 +224,9 @@ struct TodoSectionView: View {
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                        // Trailing swipe = full-swipe Done (existing behaviour)
+                        // PLUS a second trailing destructive Delete button so a
+                        // partial swipe reveals both. Mail-style.
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button {
                                 Haptics.success()
@@ -232,6 +235,14 @@ struct TodoSectionView: View {
                                 Label("Done", systemImage: "checkmark.circle.fill")
                             }
                             .tint(.red)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                Haptics.light()
+                                todoStore.delete(item.id)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
                 }
             }
@@ -640,6 +651,14 @@ struct CompletedTodosView: View {
                                 Label("Revert", systemImage: "arrow.uturn.backward")
                             }
                             .tint(.blue)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                Haptics.light()
+                                todoStore.delete(item.id)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
                     }
                 }

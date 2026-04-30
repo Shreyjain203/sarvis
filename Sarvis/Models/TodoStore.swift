@@ -41,11 +41,19 @@ final class TodoStore: ObservableObject {
         writeTypeFile(item.type)
     }
 
+    /// Removes the item from the in-memory `items` and rewrites the matching
+    /// `processed/<type>.json` file atomically. If the deleted item has a
+    /// scheduled `notificationID`, the pending notification is cancelled via
+    /// `NotificationService.shared.cancel(_:)`. Mirrors the silent-on-write-error
+    /// behavior of `add`/`update` (errors are logged, not thrown).
     func delete(_ id: UUID) {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
-        let type = items[i].type
+        let removed = items[i]
         items.remove(at: i)
-        writeTypeFile(type)
+        writeTypeFile(removed.type)
+        if let notifID = removed.notificationID {
+            NotificationService.shared.cancel(notifID)
+        }
     }
 
     func toggleDone(_ id: UUID) {

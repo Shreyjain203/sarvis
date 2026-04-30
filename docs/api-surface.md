@@ -37,6 +37,9 @@ TodoStore.shared.update(_ item: TodoItem)
   Replaces by id; rewrites type file(s).
 
 TodoStore.shared.delete(_ id: UUID)
+  Removes from `items`, rewrites the type file atomically, and cancels any
+  pending `notificationID` on the deleted item via NotificationService.
+
 TodoStore.shared.toggleDone(_ id: UUID)
   Stamps/clears completedAt.
 
@@ -72,6 +75,10 @@ NewsCache().write(_ articles: [NewsArticle], for date: Date) throws
   Atomic write to Documents/cache/news/<YYYY-MM-DD>.json.
 
 NewsCache().read(for date: Date) -> [NewsArticle]?
+
+NewsCache().delete(articleID: String, for date: Date) -> [NewsArticle]?
+  Atomic rewrite. Removes the article matching `id` (== url) from the cached
+  list for `date` and returns the updated list, or nil if no file/no match.
 ```
 
 ### EmailCache (value type)
@@ -192,6 +199,16 @@ EmailDigestService.shared.refreshToday(limit: Int = 20) async throws -> EmailDig
 
 EmailDigestService.shared.todaysDigest() -> EmailDigest?
   Reads Documents/processed/email/<today>.json without network call.
+
+EmailDigestService.shared.deleteEmail(id: String) -> EmailDigest?
+  Removes one EmailItem (Gmail msg ID) from today's digest across all 3
+  buckets (important/fyi/promo) AND drops any extracted actions whose
+  sourceMessageID matches. Atomic rewrite via DailyArtifactStore. Returns
+  the updated digest, or nil if no digest on disk / nothing matched.
+
+EmailDigestService.shared.deleteAction(id: String) -> EmailDigest?
+  Removes one EmailAction (matched by EmailAction.id). Atomic rewrite.
+  Returns the updated digest, or nil if no match.
 ```
 Published: `isRunning: Bool`, `lastError: Error?`
 
@@ -239,6 +256,16 @@ QuoteService.shared.loadAll() -> [Quote]
   Bundle seed.json + Documents/processed/quotes.json, deduped on text.
 
 QuoteService.shared.random() -> Quote?
+
+QuoteService.shared.isSeed(_ quote: Quote) -> Bool
+  True if `quote` lives in the bundled seed.json (matched on lowercased text).
+  Seed quotes are immutable — the UI uses this to suppress the swipe-delete
+  action.
+
+QuoteService.shared.delete(_ quote: Quote) -> Bool
+  Atomic rewrite of Documents/processed/quotes.json; removes the quote whose
+  lowercased text matches. No-ops (returns false) on bundled seed quotes.
+  Returns true iff the file was actually mutated.
 ```
 
 ---

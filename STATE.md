@@ -4,7 +4,7 @@
 >
 > **Reference docs (read BEFORE grepping source):** [`docs/codemap.md`](docs/codemap.md) — every Swift file + key symbols. [`docs/api-surface.md`](docs/api-surface.md) — method signatures + behavior for services. Load these two files instead of doing discovery reads.
 >
-> **Last updated:** 2026-04-27
+> **Last updated:** 2026-04-30
 
 ## Phase status
 
@@ -185,6 +185,8 @@ House conventions — every worker and instance must follow these.
 - **Dynamic-UI screens.** Go through `ElementRegistry` + `DynamicScreen` + `ScreenDefinition`. New element types must be registered in `ElementRegistry`.
 
 ## Update log
+
+- **2026-04-30** — Added swipe-to-delete (full-swipe + Delete button) on all Library sections except Profile. Stores updated with `delete(_:)` methods that rewrite JSON + cancel notifications. Todo tiles + CompletedTodosView keep their existing Done/Revert swipe and add Delete as a second trailing action. Notes/Shopping/Diary/Ideas/Suggestions converted from `VStack { ForEach }` to embedded `List` (scrollDisabled, height-clamped) so iOS-native `.swipeActions` works inside the outer ScrollView. Quotes section preserves the immutability of bundled seed quotes (`QuoteService.isSeed` / `delete` no-op). News uses `NewsCache.delete(articleID:for:)`. Email uses `EmailDigestService.deleteEmail(id:)` + `deleteAction(id:)`.
 
 - **2026-04-27** — Phase 2.2 — Gmail integration shipped (native OAuth via ASWebAuthenticationSession + Gmail REST; morning-only fetch; classified digest; Library → Email section). Requires user to provide OAuth client ID before runtime. See docs/phase-2.md §2.2 setup checklist.
 

@@ -45,6 +45,42 @@ final class QuoteService {
         return all.randomElement()
     }
 
+    /// Returns true if the quote (matched on lowercased text) lives in the
+    /// bundled seed file. Seed quotes are NOT deletable — `delete(_:)` no-ops
+    /// on them. UI can use this to suppress the swipe action visually.
+    func isSeed(_ quote: Quote) -> Bool {
+        let key = quote.text.lowercased()
+        return loadSeed().contains { $0.text.lowercased() == key }
+    }
+
+    /// Deletes a user-captured quote from `Documents/processed/quotes.json`.
+    /// Atomic write. No-ops if the quote is from the bundled seed (seed quotes
+    /// are immutable). Returns true if the file was actually mutated.
+    @discardableResult
+    func delete(_ quote: Quote) -> Bool {
+        // Seed quotes are not deletable — gracefully no-op so the UI can call
+        // this without first checking `isSeed(_:)`.
+        if isSeed(quote) { return false }
+
+        let url = accumulatedFileURL()
+        var accumulated = loadAccumulated()
+        let key = quote.text.lowercased()
+        let before = accumulated.count
+        accumulated.removeAll { $0.text.lowercased() == key }
+        guard accumulated.count != before else { return false }
+
+        // Atomic rewrite; matches `data.write(to:options:.atomic)` style used
+        // by other stores in this project.
+        do {
+            let data = try JSONEncoder().encode(accumulated)
+            try data.write(to: url, options: .atomic)
+            return true
+        } catch {
+            print("QuoteService delete error:", error)
+            return false
+        }
+    }
+
     // MARK: - Private helpers
 
     private func loadSeed() -> [Quote] {
@@ -64,11 +100,15 @@ final class QuoteService {
     }
 
     private func loadAccumulated() -> [Quote] {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let url = docs
-            .appendingPathComponent("processed", isDirectory: true)
-            .appendingPathComponent("quotes.json")
+        let url = accumulatedFileURL()
         guard let data = try? Data(contentsOf: url) else { return [] }
         return (try? JSONDecoder().decode([Quote].self, from: data)) ?? []
+    }
+
+    private func accumulatedFileURL() -> URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return docs
+            .appendingPathComponent("processed", isDirectory: true)
+            .appendingPathComponent("quotes.json")
     }
 }
