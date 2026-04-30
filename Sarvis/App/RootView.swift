@@ -11,13 +11,13 @@ struct RootView: View {
         ZStack(alignment: .bottom) {
             Theme.LayeredBackground()
 
-            // Horizontal swipe between tabs: Capture ↔ Entries ↔ Library.
+            // Horizontal swipe between tabs: Capture ↔ Library ↔ Entries.
             // Tab-bar taps and edge swipes both update `tab`; the matched-geometry
             // indicator on CustomTabBar tracks the same state either way.
             TabView(selection: $tab) {
                 InputView().tag(Tab.capture)
-                TodayView().tag(Tab.today)
                 ProcessedView().tag(Tab.library)
+                TodayView().tag(Tab.today)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea(.keyboard)
@@ -45,8 +45,8 @@ private struct CustomTabBar: View {
     var body: some View {
         HStack(spacing: Theme.Spacing.xs) {
             tabButton(.capture, label: "Capture", icon: "square.and.pencil")
-            tabButton(.today, label: "Entries", icon: "tray")
             tabButton(.library, label: "Library", icon: "tray.full")
+            tabButton(.today, label: "Entries", icon: "tray")
         }
         .padding(Theme.Spacing.xs)
         .background {

@@ -6,7 +6,7 @@
 
 ## Sarvis/App/
   SarvisApp.swift         — @main entry. Wires `NotificationService` delegate, registers categories, calls `ElementRegistry.shared.registerBuiltIns()`, `MorningJob.register()`, schedules jobs on appear.
-  RootView.swift          — 3-tab `TabView` (.page style). Tabs: `InputView` (capture), `TodayView` (entries), `ProcessedView` (library). Handles `sarvis://capture` deep link → `QuickCaptureSheet`. Custom floating tab bar with `matchedGeometryEffect`.
+  RootView.swift          — 3-tab `TabView` (.page style). Tabs in order: `InputView` (capture), `ProcessedView` (library), `TodayView` (entries). Handles `sarvis://capture` deep link → `QuickCaptureSheet`. Custom floating tab bar with `matchedGeometryEffect`.
 
 ## Sarvis/Models/
   TodoItem.swift          — `TodoItem` struct + `Importance` enum (low/medium/high/critical). Fields: `id`, `text`, `importance`, `isSensitive`, `type: InputType`, `createdAt`, `dueAt`, `isDone`, `notificationID`, `completedAt`.
