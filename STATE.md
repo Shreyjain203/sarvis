@@ -2,6 +2,8 @@
 
 > **What this file is:** a living snapshot of what's built, what's planned, and how the pieces fit together. Read this first if a conversation drops — you can resume work without re-deriving context. Update after every meaningful change.
 >
+> **Reference docs (read BEFORE grepping source):** [`docs/codemap.md`](docs/codemap.md) — every Swift file + key symbols. [`docs/api-surface.md`](docs/api-surface.md) — method signatures + behavior for services. Load these two files instead of doing discovery reads.
+>
 > **Last updated:** 2026-04-27
 
 ## Phase status
